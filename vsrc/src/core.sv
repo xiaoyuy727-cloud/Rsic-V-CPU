@@ -4,6 +4,8 @@
 `ifdef VERILATOR
 `include "include/common.sv"
 `endif
+`include "src/datapath.sv"
+
 
 module core import common::*;(
 	input  logic       clk, reset,
@@ -14,58 +16,149 @@ module core import common::*;(
 	input  logic       trint, swint, exint
 );
 	/* TODO: Add your CPU-Core here. */
+		logic [63:0] test_reg_x0;
+	logic [63:0] test_reg_x1;
+	logic [63:0] test_reg_x2;
+	logic [63:0] test_reg_x3;
+	logic [63:0] test_reg_x4;
+	logic [63:0] test_reg_x5;
+	logic [63:0] test_reg_x6;
+	logic [63:0] test_reg_x7;
+	logic [63:0] test_reg_x8;
+	logic [63:0] test_reg_x9;
+	logic [63:0] test_reg_x10;
+	logic [63:0] test_reg_x11;
+	logic [63:0] test_reg_x12;
+	logic [63:0] test_reg_x13;
+	logic [63:0] test_reg_x14;
+	logic [63:0] test_reg_x15;
+	logic [63:0] test_reg_x16;
+	logic [63:0] test_reg_x17;
+	logic [63:0] test_reg_x18;
+	logic [63:0] test_reg_x19;
+	logic [63:0] test_reg_x20;
+	logic [63:0] test_reg_x21;
+	logic [63:0] test_reg_x22;
+	logic [63:0] test_reg_x23;
+	logic [63:0] test_reg_x24;
+	logic [63:0] test_reg_x25;
+	logic [63:0] test_reg_x26;
+	logic [63:0] test_reg_x27;
+	logic [63:0] test_reg_x28;
+	logic [63:0] test_reg_x29;
+	logic [63:0] test_reg_x30;
+	logic [63:0] test_reg_x31;
+
+	logic [31:0] test_instr;
+	logic [63:0] test_pc;
+	logic test_wen;
+	logic [4:0] test_wdest;
+	logic [63:0] test_wdata;
+
+	logic valid;
+
+	assign dreq = '0;//
+
+	datapath u_datapath (
+		.clk         (clk),
+		.reset       (reset),
+
+		.ibus_resp   (iresp),
+		.ibus_req    (ireq),
+		.PCINIT		 (PCINIT),
+
+		.valid		 (valid),
+		.test_pc	 (test_pc),
+		.test_instr	 (test_instr),
+		.test_wen	 (test_wen),
+		.test_wdata  (test_wdata),
+		.test_wdest	 (test_wdest),
+
+		.test_reg_x0  (test_reg_x0),
+		.test_reg_x1  (test_reg_x1),
+		.test_reg_x2  (test_reg_x2),
+		.test_reg_x3  (test_reg_x3),
+		.test_reg_x4  (test_reg_x4),
+		.test_reg_x5  (test_reg_x5),
+		.test_reg_x6  (test_reg_x6),
+		.test_reg_x7  (test_reg_x7),
+		.test_reg_x8  (test_reg_x8),
+		.test_reg_x9  (test_reg_x9),
+		.test_reg_x10 (test_reg_x10),
+		.test_reg_x11 (test_reg_x11),
+		.test_reg_x12 (test_reg_x12),
+		.test_reg_x13 (test_reg_x13),
+		.test_reg_x14 (test_reg_x14),
+		.test_reg_x15 (test_reg_x15),
+		.test_reg_x16 (test_reg_x16),
+		.test_reg_x17 (test_reg_x17),
+		.test_reg_x18 (test_reg_x18),
+		.test_reg_x19 (test_reg_x19),
+		.test_reg_x20 (test_reg_x20),
+		.test_reg_x21 (test_reg_x21),
+		.test_reg_x22 (test_reg_x22),
+		.test_reg_x23 (test_reg_x23),
+		.test_reg_x24 (test_reg_x24),
+		.test_reg_x25 (test_reg_x25),
+		.test_reg_x26 (test_reg_x26),
+		.test_reg_x27 (test_reg_x27),
+		.test_reg_x28 (test_reg_x28),
+		.test_reg_x29 (test_reg_x29),
+		.test_reg_x30 (test_reg_x30),
+		.test_reg_x31 (test_reg_x31)
+	);
 
 `ifdef VERILATOR
 	DifftestInstrCommit DifftestInstrCommit(
 		.clock              (clk),
 		.coreid             (0),
 		.index              (0),
-		.valid              (1'b1),
-		.pc                 (PCINIT),
-		.instr              (0),
+		.valid              (valid),//当前指令是否有效
+		.pc                 (test_pc),//
+		.instr              (test_instr),//
 		.skip               (0),
 		.isRVC              (0),
 		.scFailed           (0),
-		.wen                (0),
-		.wdest              (0),
-		.wdata              (0)
+		.wen                (test_wen),//
+		.wdest              ({3'b000, test_wdest}),//
+		.wdata              (test_wdata)//
 	);
 
 	DifftestArchIntRegState DifftestArchIntRegState (
 		.clock              (clk),
 		.coreid             (0),
-		.gpr_0              (0),
-		.gpr_1              (0),
-		.gpr_2              (0),
-		.gpr_3              (0),
-		.gpr_4              (0),
-		.gpr_5              (0),
-		.gpr_6              (0),
-		.gpr_7              (0),
-		.gpr_8              (0),
-		.gpr_9              (0),
-		.gpr_10             (0),
-		.gpr_11             (0),
-		.gpr_12             (0),
-		.gpr_13             (0),
-		.gpr_14             (0),
-		.gpr_15             (0),
-		.gpr_16             (0),
-		.gpr_17             (0),
-		.gpr_18             (0),
-		.gpr_19             (0),
-		.gpr_20             (0),
-		.gpr_21             (0),
-		.gpr_22             (0),
-		.gpr_23             (0),
-		.gpr_24             (0),
-		.gpr_25             (0),
-		.gpr_26             (0),
-		.gpr_27             (0),
-		.gpr_28             (0),
-		.gpr_29             (0),
-		.gpr_30             (0),
-		.gpr_31             (0)
+		.gpr_0              (test_reg_x0),
+		.gpr_1              (test_reg_x1),
+		.gpr_2              (test_reg_x2),
+		.gpr_3              (test_reg_x3),
+		.gpr_4              (test_reg_x4),
+		.gpr_5              (test_reg_x5),
+		.gpr_6              (test_reg_x6),
+		.gpr_7              (test_reg_x7),
+		.gpr_8              (test_reg_x8),
+		.gpr_9              (test_reg_x9),
+		.gpr_10             (test_reg_x10),
+		.gpr_11             (test_reg_x11),
+		.gpr_12             (test_reg_x12),
+		.gpr_13             (test_reg_x13),
+		.gpr_14             (test_reg_x14),
+		.gpr_15             (test_reg_x15),
+		.gpr_16             (test_reg_x16),
+		.gpr_17             (test_reg_x17),
+		.gpr_18             (test_reg_x18),
+		.gpr_19             (test_reg_x19),
+		.gpr_20             (test_reg_x20),
+		.gpr_21             (test_reg_x21),
+		.gpr_22             (test_reg_x22),
+		.gpr_23             (test_reg_x23),
+		.gpr_24             (test_reg_x24),
+		.gpr_25             (test_reg_x25),
+		.gpr_26             (test_reg_x26),
+		.gpr_27             (test_reg_x27),
+		.gpr_28             (test_reg_x28),
+		.gpr_29             (test_reg_x29),
+		.gpr_30             (test_reg_x30),
+		.gpr_31             (test_reg_x31)
 	);
 
     DifftestTrapEvent DifftestTrapEvent(
