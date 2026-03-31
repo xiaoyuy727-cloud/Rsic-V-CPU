@@ -6,7 +6,6 @@
 `endif
 `include "src/datapath.sv"
 
-
 module core import common::*;(
 	input  logic       clk, reset,
 	output ibus_req_t  ireq,
@@ -57,7 +56,6 @@ module core import common::*;(
 
 	logic valid;
 
-	assign dreq = '0;//
 
 	datapath u_datapath (
 		.clk         (clk),
@@ -65,6 +63,8 @@ module core import common::*;(
 
 		.ibus_resp   (iresp),
 		.ibus_req    (ireq),
+		.dbus_resp   (dresp),
+		.dbus_req    (dreq),
 		.PCINIT		 (PCINIT),
 
 		.valid		 (valid),
@@ -116,7 +116,7 @@ module core import common::*;(
 		.valid              (valid),//当前指令是否有效
 		.pc                 (test_pc),//
 		.instr              (test_instr),//
-		.skip               (0),
+		.skip    ((mem & memaddr[31] == 0)),
 		.isRVC              (0),
 		.scFailed           (0),
 		.wen                (test_wen),//

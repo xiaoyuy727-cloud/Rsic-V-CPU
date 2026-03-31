@@ -1,3 +1,4 @@
+`include "include/common.sv"
 `include "src/alu_adder.sv"
 `include "src/alu.sv"
 `include "src/alures_mux.sv"
@@ -388,7 +389,7 @@ module datapath import common::*;(
         .mem_digit_m        (mem_digit_m),
         .final_alu_result_m (aluout_m),
         .rd_m               (rd_m),
-        .regwirte_m         (regwrite_m),
+        .regwrite_m         (regwrite_m),
         .rs2_val_m          (rs2_val_m)
     );
 
@@ -417,7 +418,7 @@ module datapath import common::*;(
     // MEM/WB
     // =========================
     logic        wb_result_w;
-
+    logic [63:0] aluout_w;
     mem_wb_reg mem_wb(
         .aluout_m         (aluout_m),
         .mem_write_data_m (mem_read_data_m),
@@ -445,14 +446,14 @@ module datapath import common::*;(
     // 5. WB
     // =========================
     wbres_mux WB1(
-        .wbresult_w      (wb_result_w),
+        .wb_result_w      (wb_result_w),
         .aluout_w        (aluout_w),
         .mem_write_data_w(mem_write_data_w),
         .wb_write_data   (wb_write_data)
     );
 
-    assign valid = valid_w;
-
+    assign valid = commit_valid;
+    logic valid_w_prev;
     // =========================
     // commit for test
     // =========================
@@ -465,6 +466,7 @@ module datapath import common::*;(
 
     always_ff @(posedge clk) begin
         if (reset) begin
+            valid_w_prev <= 1'b0;
             commit_valid <= 1'b0;
             commit_pc    <= 64'b0;
             commit_instr <= 32'b0;
@@ -472,12 +474,18 @@ module datapath import common::*;(
             commit_wdest <= 5'b0;
             commit_wdata <= 64'b0;
         end else begin
-            commit_valid <= valid_w;
-            commit_pc    <= pc_w;
-            commit_instr <= instr_w;
-            commit_wen   <= regwrite_w;
-            commit_wdest <= rd_w;
-            commit_wdata <= wb_write_data;
+            valid_w_prev <= valid_w;
+
+            // 只在 valid_w 从 0 变成 1 时提交一次
+            commit_valid <= valid_w & ~valid_w_prev;
+
+            if (valid_w & ~valid_w_prev) begin
+                commit_pc    <= pc_w;
+                commit_instr <= instr_w;
+                commit_wen   <= regwrite_w;
+                commit_wdest <= rd_w;
+                commit_wdata <= wb_write_data;
+            end
         end
     end
 

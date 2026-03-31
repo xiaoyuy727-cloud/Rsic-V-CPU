@@ -213,6 +213,7 @@ module control_unit (
             // =========================
             7'b0110111: begin
                 regwrite_d = 1'b1;
+                alusrcb_d = 1'b1;
                 // 其余保持默认 0
                 // 按你的表：alusrca_d = 0, alusrcb_d = 0, wb_result_d = 0
             end
