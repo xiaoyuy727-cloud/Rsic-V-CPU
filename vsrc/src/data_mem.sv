@@ -27,7 +27,22 @@ import common::*;
 
 
 
+`include "include/common.sv"
+import common::*;
+
+//模块名称：data_mem
+//接口：input logic        valid_m
+//      input logic [63:0] address
+//      input logic [63:0] mem_write_data
+//      input logic mem_write_m
+//      input logic mem_read_m
+//      input logic [1:0] mem_digit_m (0则8个bit，1则16个bit，2则32个bit，3则64个bit)
+//      input logic mem_sign_m  (1时零扩展，0时符号扩展)
+//      output logic [63:0] mem_read_data
+//      output logic mem_stall
+
 module data_mem (
+    input  logic        valid_m,
     input  logic [63:0] address,
     input  logic [63:0] mem_write_data,
     input  logic        mem_write_m,
@@ -45,18 +60,20 @@ module data_mem (
     logic [2:0]  offset;
     logic [7:0]  base_strobe;
     logic [63:0] shifted_rdata;
+    logic        mem_req_valid;
 
-    assign offset = address[2:0];
+    assign offset       = address[2:0];
+    assign mem_req_valid = valid_m & (mem_read_m | mem_write_m);
 
-    // 只要当前是读/写访存，且 data_ok 还没到，就要求流水线 stall
-    assign mem_stall = (mem_read_m | mem_write_m) & (~dresp.data_ok);
+    // 只有当前 M 级是有效访存指令，且 data_ok 还没到时，才 stall
+    assign mem_stall = mem_req_valid & (~dresp.data_ok);
 
     // 把返回的 64bit 数据按地址低 3 位右移到最低位
     assign shifted_rdata = dresp.data >> (offset * 8);
 
     // 生成 dbus 请求
     always_comb begin
-        dreq.valid  = mem_read_m | mem_write_m;
+        dreq.valid  = mem_req_valid;
         dreq.addr   = address;
         dreq.size   = MSIZE1;
         dreq.strobe = 8'b0;
@@ -73,7 +90,7 @@ module data_mem (
         endcase
 
         // 写请求时，设置 strobe 和 data
-        if (mem_write_m) begin
+        if (mem_req_valid && mem_write_m) begin
             case (mem_digit_m)
                 2'd0: base_strobe = 8'b0000_0001; // 1 byte
                 2'd1: base_strobe = 8'b0000_0011; // 2 byte

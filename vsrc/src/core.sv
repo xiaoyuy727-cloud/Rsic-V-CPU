@@ -116,7 +116,7 @@ module core import common::*;(
 		.valid              (valid),//当前指令是否有效
 		.pc                 (test_pc),//
 		.instr              (test_instr),//
-		.skip    ((mem & memaddr[31] == 0)),
+		.skip    			(0),//(mem & memaddr[31] == 0)
 		.isRVC              (0),
 		.scFailed           (0),
 		.wen                (test_wen),//

@@ -10,7 +10,9 @@
 //     input logic [31:0] instr_m
 //     input logic valid_m
 //     input logic mem_wb_stall
+//     input logic is_baj_m
 
+//     output logic is_baj_w
 //     output logic [63:0] mem_write_data_w
 //     output logic wb_result_w
 //     output logic [63:0] pc_w
@@ -33,7 +35,9 @@ module mem_wb_reg (
     input  logic [31:0] instr_m,
     input  logic        valid_m,
     input  logic        mem_wb_stall,
+    input  logic [1:0]  is_baj_m,
 
+    output logic [1:0]  is_baj_w,
     output logic [63:0] mem_write_data_w,
     output logic        wb_result_w,
     output logic [63:0] pc_w,
@@ -54,6 +58,7 @@ module mem_wb_reg (
             rd_w             <= 5'b0;
             regwrite_w       <= 1'b0;
             valid_w          <= 1'b0;
+            is_baj_w         <=2'b0;
         end
         else if (!mem_wb_stall) begin
             mem_write_data_w <= mem_write_data_m;
@@ -64,6 +69,7 @@ module mem_wb_reg (
             rd_w             <= rd_m;
             regwrite_w       <= regwrite_m;
             valid_w          <= valid_m;
+            is_baj_w         <= is_baj_m;
         end
     end
 

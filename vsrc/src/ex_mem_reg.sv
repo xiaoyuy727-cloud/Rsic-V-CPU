@@ -7,6 +7,7 @@
 //     input logic [63:0] final_alu_result_e
 //     input logic [4:0] rd_e
 //     input logic regwrite_e
+//     input logic is_baj_e
 //     input logic clk
 //     input logic reset
 //     input logic [63:0] pc_e 
@@ -21,6 +22,7 @@
 //     output logic mem_write_m
 //     output logic mem_read_m
 //     output logic mem_sign_m
+//     output logic is_baj_m
 //     output logic [1:0] mem_digit_m
 //     output logic [63:0] final_alu_result_m
 //     output logic [4:0] rd_m
@@ -44,6 +46,7 @@ module ex_mem_reg (
     input  logic        valid_e,
     input  logic [63:0] rs2_val_e,
     input  logic        ex_mem_stall,
+    input  logic [1:0]  is_baj_e, 
 
     output logic        wb_result_m,
     output logic        valid_m,
@@ -56,7 +59,8 @@ module ex_mem_reg (
     output logic [63:0] final_alu_result_m,
     output logic [4:0]  rd_m,
     output logic        regwrite_m,
-    output logic [63:0] rs2_val_m
+    output logic [63:0] rs2_val_m,
+    output logic [1:0]  is_baj_m
 );
 
     always_ff @(posedge clk) begin
@@ -73,6 +77,7 @@ module ex_mem_reg (
             rd_m               <= 5'b0;
             regwrite_m         <= 1'b0;
             rs2_val_m          <= 64'b0;
+            is_baj_m           <= 2'b0;
         end
         else if (!ex_mem_stall) begin
             wb_result_m        <= wb_result_e;
@@ -87,6 +92,7 @@ module ex_mem_reg (
             rd_m               <= rd_e;
             regwrite_m         <= regwrite_e;
             rs2_val_m          <= rs2_val_e;
+            is_baj_m           <= is_baj_e;
         end
     end
 
