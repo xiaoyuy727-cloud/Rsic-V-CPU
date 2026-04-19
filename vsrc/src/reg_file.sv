@@ -107,16 +107,29 @@ module reg_file(
     end
 
     // 组合读：x0 恒为 0
+    // 同拍写后读旁路（WB -> ID bypass）
     always_comb begin
-        if (rs1 == 5'd0)
+        // rs1
+        if (rs1 == 5'd0) begin
             rs1_val_d = 64'd0;
-        else
+        end
+        else if (regwrite == 1'b1 && rd != 5'd0 && rd == rs1) begin
+            rs1_val_d = writedata;
+        end
+        else begin
             rs1_val_d = regs[rs1];
+        end
 
-        if (rs2 == 5'd0)
+        // rs2
+        if (rs2 == 5'd0) begin
             rs2_val_d = 64'd0;
-        else
+        end
+        else if (regwrite == 1'b1 && rd != 5'd0 && rd == rs2) begin
+            rs2_val_d = writedata;
+        end
+        else begin
             rs2_val_d = regs[rs2];
+        end
     end
 
     // 调试输出：x0 恒为 0

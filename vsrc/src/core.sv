@@ -56,10 +56,16 @@ module core import common::*;(
 
 	logic valid;
 
+	logic mem;
+	logic [63:0] memaddr;
+
 
 	datapath u_datapath (
 		.clk         (clk),
 		.reset       (reset),
+
+		.mem		 (mem),
+		.memaddr	 (memaddr),
 
 		.ibus_resp   (iresp),
 		.ibus_req    (ireq),
@@ -116,7 +122,7 @@ module core import common::*;(
 		.valid              (valid),//当前指令是否有效
 		.pc                 (test_pc),//
 		.instr              (test_instr),//
-		.skip    			(0),//(mem & memaddr[31] == 0)
+		.skip    			(mem & memaddr[31] == 0),//(mem & memaddr[31] == 0)或者0
 		.isRVC              (0),
 		.scFailed           (0),
 		.wen                (test_wen),//

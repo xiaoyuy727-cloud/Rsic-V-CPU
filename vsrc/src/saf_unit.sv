@@ -14,6 +14,7 @@
 module saf_unit (
     input  logic mem_stall,
     input  logic redirect_valid,
+    input  logic load_use_stall,
 
     output logic pc_stall,
     output logic if_id_stall,
@@ -25,16 +26,14 @@ module saf_unit (
 );
 
     always_comb begin
-        // 所有 stall 信号都直接跟随 mem_stall
-        pc_stall     = mem_stall;
-        if_id_stall  = mem_stall;
+        pc_stall     = mem_stall | load_use_stall;
+        if_id_stall  = mem_stall | load_use_stall;
         id_ex_stall  = mem_stall;
         ex_mem_stall = mem_stall;
         mem_wb_stall = mem_stall;
 
-        // redirect 时清空前两级流水寄存器
         if_id_flush  = redirect_valid;
-        id_ex_flush  = redirect_valid;
+        id_ex_flush  = redirect_valid | load_use_stall;
     end
 
 endmodule

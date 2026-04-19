@@ -2,6 +2,7 @@
 `include "src/alu_adder.sv"
 `include "src/alu.sv"
 `include "src/alures_mux.sv"
+`include "src/load_use_hazard.sv"
 `include "src/branch_cmp.sv"
 `include "src/control_unit.sv"
 `include "src/ex_mem_reg.sv"
@@ -71,7 +72,9 @@ module datapath import common::*;(
     output logic [63:0] test_reg_x28,
     output logic [63:0] test_reg_x29,
     output logic [63:0] test_reg_x30,
-    output logic [63:0] test_reg_x31
+    output logic [63:0] test_reg_x31,
+    output logic mem,
+    output logic [63:0] memaddr
 );
 
     // =========================================================
@@ -91,6 +94,7 @@ module datapath import common::*;(
     logic [63:0] redirect_pc;
 
     saf_unit st(
+        .load_use_stall (load_use_stall),
         .mem_stall      (mem_stall),
         .redirect_valid (redirect_valid),
         .pc_stall       (pc_stall),
@@ -193,6 +197,20 @@ module datapath import common::*;(
     assign funct3 = instr_d[14:12];
     assign rs1    = instr_d[19:15];
     assign rs2    = instr_d[24:20];
+
+    logic [4:0] rs1_d, rs2_d;
+    logic load_use_stall;
+
+    assign rs1_d = instr_d[19:15];
+    assign rs2_d = instr_d[24:20];
+
+    load_use_hazard HZD1(
+        .mem_read_e      (mem_read_e),
+        .rd_e            (rd_e),
+        .rs1_d           (rs1_d),
+        .rs2_d           (rs2_d),
+        .load_use_stall  (load_use_stall)
+    );
 
     control_unit ID1(
         .funct3        (funct3),
@@ -351,11 +369,47 @@ module datapath import common::*;(
     logic [63:0] long_alu_result_e;
     logic [63:0] aluout_e;
 
+    logic [63:0] rs1_eff_e;
+    logic [63:0] rs2_eff_e;
+
     logic [63:0] cmp_b_e;
     logic        cmp_res;
 
+always_comb begin
+    rs1_eff_e = rs1_val_e;
+    rs2_eff_e = rs2_val_e;
+
+    // rs1
+    if (valid_m && regwrite_m && (rd_m != 5'd0) && (rd_m == instr_e[19:15])) begin
+        if (!mem_read_m) begin
+            rs1_eff_e = aluout_m;
+        end
+        else if (dbus_resp.data_ok) begin
+            rs1_eff_e = mem_read_data_m;
+        end
+    end
+    else if (valid_w && regwrite_w && (rd_w != 5'd0) &&
+             (rd_w == instr_e[19:15])) begin
+        rs1_eff_e = wb_write_data;
+    end
+
+    // rs2
+    if (valid_m && regwrite_m && (rd_m != 5'd0) && (rd_m == instr_e[24:20])) begin
+        if (!mem_read_m) begin
+            rs2_eff_e = aluout_m;
+        end
+        else if (dbus_resp.data_ok) begin
+            rs2_eff_e = mem_read_data_m;
+        end
+    end
+    else if (valid_w && regwrite_w && (rd_w != 5'd0) &&
+             (rd_w == instr_e[24:20])) begin
+        rs2_eff_e = wb_write_data;
+    end
+end
+
     srca_mux EX5(
-        .rs1_val_e (rs1_val_e),
+        .rs1_val_e (rs1_eff_e),
         .alusrca_e (alusrca_e),
         .pc_e      (pc_e),
         .srca_e    (srca_e)
@@ -363,7 +417,7 @@ module datapath import common::*;(
 
     srcb_mux EX1(
         .imm_e      (imm_e),
-        .rs2_val_e  (rs2_val_e),
+        .rs2_val_e  (rs2_eff_e),
         .alusrcb_e  (alusrcb_e),
         .srcb_e     (srcb_e)
     );
@@ -388,10 +442,10 @@ module datapath import common::*;(
         .final_alu_result_e (aluout_e)
     );
 
-    assign cmp_b_e = cmpsrc_e ? imm_e : rs2_val_e;
+    assign cmp_b_e = cmpsrc_e ? imm_e : rs2_eff_e;
 
     branch_cmp EXCMP(
-        .a             (rs1_val_e),
+        .a             (rs1_eff_e),
         .b             (cmp_b_e),
         .branch_type_e (branch_type_e),
         .cmp_res       (cmp_res)
@@ -437,7 +491,7 @@ module datapath import common::*;(
         .pc_e               (pc_e),
         .instr_e            (instr_e),
         .valid_e            (valid_e),
-        .rs2_val_e          (rs2_val_e),
+        .rs2_val_e          (rs2_eff_e),
         .ex_mem_stall       (ex_mem_stall),
         .is_baj_e           (is_baj_e),
 
@@ -524,6 +578,15 @@ module datapath import common::*;(
     // =========================================================
     // commit for test
     // =========================================================
+    
+    logic        mem_inst_w;
+    logic        commit_mem_valid;
+    logic [63:0] commit_mem_addr;
+
+    assign mem_inst_w =
+    (instr_w[6:0] == 7'b0000011) ||   // LOAD
+    (instr_w[6:0] == 7'b0100011);     // STORE
+    
     logic        commit_valid;
     logic [63:0] commit_pc;
     logic [31:0] commit_instr;
@@ -541,6 +604,8 @@ module datapath import common::*;(
             commit_wen   <= 1'b0;
             commit_wdest <= 5'b0;
             commit_wdata <= 64'b0;
+            commit_mem_valid <= 1'b0;
+            commit_mem_addr  <= 64'b0;
         end
         else begin
             commit_valid <= valid_w;
@@ -551,6 +616,8 @@ module datapath import common::*;(
                 commit_wen   <= regwrite_w;
                 commit_wdest <= rd_w;
                 commit_wdata <= wb_write_data;
+                commit_mem_valid <= mem_inst_w;
+                commit_mem_addr  <= aluout_w;
             end
             else begin
                 commit_pc    <= 64'b0;
@@ -558,9 +625,14 @@ module datapath import common::*;(
                 commit_wen   <= 1'b0;
                 commit_wdest <= 5'b0;
                 commit_wdata <= 64'b0;
+                commit_mem_valid <= 1'b0;
+                commit_mem_addr  <= 64'b0;
             end
         end
     end
+
+    assign mem = commit_mem_valid & commit_valid;
+    assign memaddr  = commit_mem_addr;
 
     assign test_pc    = commit_pc;
     assign test_instr = commit_instr;
