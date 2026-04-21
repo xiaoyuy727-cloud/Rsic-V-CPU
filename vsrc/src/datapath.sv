@@ -1,3 +1,4 @@
+`ifdef VERILATOR
 `include "include/common.sv"
 `include "src/alu_adder.sv"
 `include "src/alu.sv"
@@ -22,6 +23,7 @@
 `include "src/data_mem.sv"
 `include "src/imm_gen.sv"
 `include "src/wbres_mux.sv"
+`endif
 
 module datapath import common::*;(
     input  logic        clk,
@@ -198,7 +200,7 @@ module datapath import common::*;(
     assign rs1    = instr_d[19:15];
     assign rs2    = instr_d[24:20];
 
-    logic [4:0] rs1_d, rs2_d;
+    logic [4:0] rs1_d, rs2_d;//就是rs1和rs2，接给load use hazard
     logic load_use_stall;
 
     assign rs1_d = instr_d[19:15];

@@ -3,8 +3,9 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
-`endif
 `include "src/datapath.sv"
+`endif
+
 
 module core import common::*;(
 	input  logic       clk, reset,

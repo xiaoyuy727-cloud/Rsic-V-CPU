@@ -15,9 +15,9 @@
 //每一拍，当consume=1，表示目前的指令被下游消费，fetch_ok归零。
 //     当目前没有挂起请求且没有已取回但是没有消费的指令时，pending=1，发起新的请求，把发起请求的pc锁存起来。收到返回前每一拍保持。
 //     当ibus_resp.addr_ok和data_ok都是1，instr和pc传给后面，fetch_ok写入1，pc更新+4，pending归0.
-
+`ifdef VERILATOR
 `include "include/common.sv"
-
+`endif
 module instr_mem import common::*;(
     input  logic        clk,
     input  logic        reset,

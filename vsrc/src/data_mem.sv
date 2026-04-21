@@ -1,4 +1,6 @@
+`ifdef VERILATOR
 `include "include/common.sv"
+`endif
 import common::*;
 
 //模块名称：data_mem
@@ -25,21 +27,6 @@ import common::*;
 //              如果mem_digit_m是3，那么读mem[address]到mem[address+7]中64个bit的数据。在此基础上，如果mem_sign_m是1，零扩展，否则符号扩展到64位，写到mem_read_data
 //     在这种情况下，如果dataok是0，那么一直锁住所有流水寄存器和pc，也就是将memstall一直置为1.
 
-
-
-`include "include/common.sv"
-import common::*;
-
-//模块名称：data_mem
-//接口：input logic        valid_m
-//      input logic [63:0] address
-//      input logic [63:0] mem_write_data
-//      input logic mem_write_m
-//      input logic mem_read_m
-//      input logic [1:0] mem_digit_m (0则8个bit，1则16个bit，2则32个bit，3则64个bit)
-//      input logic mem_sign_m  (1时零扩展，0时符号扩展)
-//      output logic [63:0] mem_read_data
-//      output logic mem_stall
 
 module data_mem (
     input  logic        valid_m,
