@@ -2,7 +2,7 @@
 //接口：input logic mem_write_e
 //     input logic mem_read_e
 //     input logic mem_sign_e
-//     input logic wb_result_e
+//     input logic [1:0]wb_result_e
 //     input logic [1:0]mem_digit_e
 //     input logic [63:0] final_alu_result_e
 //     input logic [4:0] rd_e
@@ -15,7 +15,9 @@
 //     input logic valid_e
 //     input logic [63:0] rs2_val_e
 //     input logic ex_mem_stall
-//     output logic wb_result_m
+//     input logic csrwrite_e
+//     output logic csrwrite_m
+//     output logic [1:0]wb_result_m
 //     output logic valid_m
 //     output logic [63:0] pc_m
 //     output logic [31:0] instr_m
@@ -34,7 +36,7 @@ module ex_mem_reg (
     input  logic        mem_write_e,
     input  logic        mem_read_e,
     input  logic        mem_sign_e,
-    input  logic        wb_result_e,
+    input  logic [1:0]  wb_result_e,
     input  logic [1:0]  mem_digit_e,
     input  logic [63:0] final_alu_result_e,
     input  logic [4:0]  rd_e,
@@ -47,8 +49,17 @@ module ex_mem_reg (
     input  logic [63:0] rs2_val_e,
     input  logic        ex_mem_stall,
     input  logic [1:0]  is_baj_e, 
+    input logic         csrwrite_e,
+    input logic [11:0]      csr_num_e,
+    input logic [63:0]      csr_value_e,
+    input  logic [63:0] csr_operand_e,
+output logic [63:0] csr_operand_m,
 
-    output logic        wb_result_m,
+    output logic [11:0]      csr_num_m,
+    output logic [63:0]      csr_value_m,
+
+    output logic        csrwrite_m,
+    output logic [1:0]  wb_result_m,
     output logic        valid_m,
     output logic [63:0] pc_m,
     output logic [31:0] instr_m,
@@ -65,7 +76,11 @@ module ex_mem_reg (
 
     always_ff @(posedge clk) begin
         if (reset) begin
-            wb_result_m        <= 1'b0;
+            
+            csr_num_m     <= 12'b0;
+            csr_operand_m <= 64'b0;
+            csr_value_m   <= 64'b0;
+            wb_result_m        <= 2'b0;
             valid_m            <= 1'b0;
             pc_m               <= 64'b0;
             instr_m            <= 32'b0;
@@ -78,8 +93,13 @@ module ex_mem_reg (
             regwrite_m         <= 1'b0;
             rs2_val_m          <= 64'b0;
             is_baj_m           <= 2'b0;
+            csrwrite_m         <= 1'b0;
         end
         else if (!ex_mem_stall) begin
+
+            csr_num_m     <= csr_num_e;
+            csr_operand_m <= csr_operand_e;
+            csr_value_m   <= csr_value_e;
             wb_result_m        <= wb_result_e;
             valid_m            <= valid_e;
             pc_m               <= pc_e;
@@ -93,6 +113,7 @@ module ex_mem_reg (
             regwrite_m         <= regwrite_e;
             rs2_val_m          <= rs2_val_e;
             is_baj_m           <= is_baj_e;
+            csrwrite_m         <= csrwrite_e;
         end
     end
 

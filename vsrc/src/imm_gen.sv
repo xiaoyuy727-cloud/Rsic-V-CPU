@@ -10,7 +10,7 @@
 //    当opcode为0110111或0010111，Utype指令。对于第12-31位的立即数，首先左移12位变成一个32位立即数，然后符号扩展到64位之后写给imm_d
 //    当opcode为1100011，Btype指令，对于第25-31位的立即数，对应的分别是立即数的5-10和12位；对于7-11位的立即数，对应的分别是立即数的1-4和11位。拼凑之后写给imm_d
 //    当opcode为1101111，Jtype指令，imm = {{43{instr[31]}},instr[31], instr[19:12],instr[20],instr[30:21],1'b0};
-
+//    当opcode为1110011，Itype指令，对于第15-19位的立即数，0扩展到64位。
 module imm_gen (
     input  logic [31:0] instr_d,
     output logic [63:0] imm_d
@@ -61,6 +61,10 @@ module imm_gen (
                          instr_d[20],
                          instr_d[30:21],
                          1'b0};
+            end
+
+            7'b1110011: begin
+                imm_d={59'd0,instr_d[19:15]};
             end
 
             default: begin

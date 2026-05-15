@@ -3,6 +3,7 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
+`include "include/csr.sv"
 `include "src/datapath.sv"
 `endif
 
@@ -60,6 +61,17 @@ module core import common::*;(
 	logic mem;
 	logic [63:0] memaddr;
 
+	logic [63:0] csr_mstatus;
+    logic [63:0] csr_mtvec;
+    logic [63:0] csr_mip;
+    logic [63:0] csr_mie;
+    logic [63:0] csr_mscratch;
+    logic [63:0] csr_mcause;
+    logic [63:0] csr_mtval;
+    logic [63:0] csr_mepc;
+    logic [63:0] csr_mcycle;
+    logic [63:0] csr_mhartid;
+    logic [63:0] csr_satp; 
 
 	datapath u_datapath (
 		.clk         (clk),
@@ -112,7 +124,19 @@ module core import common::*;(
 		.test_reg_x28 (test_reg_x28),
 		.test_reg_x29 (test_reg_x29),
 		.test_reg_x30 (test_reg_x30),
-		.test_reg_x31 (test_reg_x31)
+		.test_reg_x31 (test_reg_x31),
+
+		.csr_mstatus (csr_mstatus),
+		.csr_mtvec	 (csr_mtvec),
+		.csr_mip	 (csr_mip),
+		.csr_mie	 (csr_mie),
+		.csr_mscratch(csr_mscratch),
+		.csr_mcause	 (csr_mcause),
+		.csr_mtval	 (csr_mtval),
+		.csr_mepc	 (csr_mepc),
+		.csr_mcycle	 (csr_mcycle),
+		.csr_mhartid (csr_mhartid),
+		.csr_satp	 (csr_satp)
 	);
 
 `ifdef VERILATOR
@@ -182,20 +206,20 @@ module core import common::*;(
 		.clock              (clk),
 		.coreid             (0),
 		.priviledgeMode     (3),
-		.mstatus            (0),
-		.sstatus            (0 /* mstatus & SSTATUS_MASK */),
-		.mepc               (0),
+		.mstatus            (csr_mstatus),
+		.sstatus		    (csr_mstatus & 64'h8000_0003_000D_E122),
+		.mepc               (csr_mepc),
 		.sepc               (0),
-		.mtval              (0),
+		.mtval              (csr_mtval),
 		.stval              (0),
-		.mtvec              (0),
+		.mtvec              (csr_mtvec),
 		.stvec              (0),
-		.mcause             (0),
+		.mcause             (csr_mcause),
 		.scause             (0),
-		.satp               (0),
-		.mip                (0),
-		.mie                (0),
-		.mscratch           (0),
+		.satp               (csr_satp ),
+		.mip                (csr_mip),
+		.mie                (csr_mie),
+		.mscratch           (csr_mscratch),
 		.sscratch           (0),
 		.mideleg            (0),
 		.medeleg            (0)

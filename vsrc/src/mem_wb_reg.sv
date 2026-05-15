@@ -2,7 +2,7 @@
 //接口：input logic [63:0] aluout_m
 //     input logic [63:0] mem_write_data_m
 //     input logic [4:0] rd_m
-//     input logic wb_result_m
+//     input logic [1:0]wb_result_m
 //     input logic regwrite_m
 //     input logic clk
 //     input logic reset
@@ -11,10 +11,12 @@
 //     input logic valid_m
 //     input logic mem_wb_stall
 //     input logic is_baj_m
+//     input logic csrwrite_m
 
+//     output logic csrwrite_w
 //     output logic is_baj_w
 //     output logic [63:0] mem_write_data_w
-//     output logic wb_result_w
+//     output logic [1:0]wb_result_w
 //     output logic [63:0] pc_w
 //     output logic [31:0] instr_w
 //     output logic [63:0] aluout_w
@@ -27,7 +29,7 @@ module mem_wb_reg (
     input  logic [63:0] aluout_m,
     input  logic [63:0] mem_write_data_m,
     input  logic [4:0]  rd_m,
-    input  logic        wb_result_m,
+    input  logic  [1:0]  wb_result_m,
     input  logic        regwrite_m,
     input  logic        clk,
     input  logic        reset,
@@ -36,10 +38,17 @@ module mem_wb_reg (
     input  logic        valid_m,
     input  logic        mem_wb_stall,
     input  logic [1:0]  is_baj_m,
+    input  logic        csrwrite_m,
+    input logic [11:0]      csr_num_m,
+    input logic [63:0]      csr_value_m,
 
+    output logic [11:0]      csr_num_w,
+    output logic [63:0]      csr_value_w,
+
+    output logic        csrwrite_w,
     output logic [1:0]  is_baj_w,
     output logic [63:0] mem_write_data_w,
-    output logic        wb_result_w,
+    output logic  [1:0] wb_result_w,
     output logic [63:0] pc_w,
     output logic [31:0] instr_w,
     output logic [63:0] aluout_w,
@@ -50,8 +59,10 @@ module mem_wb_reg (
 
     always_ff @(posedge clk) begin
         if (reset) begin
+            csr_num_w     <= 12'b0;
+            csr_value_w   <= 64'b0;
             mem_write_data_w <= 64'b0;
-            wb_result_w      <= 1'b0;
+            wb_result_w      <= 2'b0;
             pc_w             <= 64'b0;
             instr_w          <= 32'b0;
             aluout_w         <= 64'b0;
@@ -59,8 +70,11 @@ module mem_wb_reg (
             regwrite_w       <= 1'b0;
             valid_w          <= 1'b0;
             is_baj_w         <=2'b0;
+            csrwrite_w       <=1'b0;
         end
         else if (!mem_wb_stall) begin
+            csr_num_w     <= csr_num_m;
+            csr_value_w   <= csr_value_m;
             mem_write_data_w <= mem_write_data_m;
             wb_result_w      <= wb_result_m;
             pc_w             <= pc_m;
@@ -70,6 +84,7 @@ module mem_wb_reg (
             regwrite_w       <= regwrite_m;
             valid_w          <= valid_m;
             is_baj_w         <= is_baj_m;
+            csrwrite_w       <= csrwrite_m;
         end
     end
 

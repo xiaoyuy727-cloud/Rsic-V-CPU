@@ -6,11 +6,11 @@
 //     input logic [4:0] rd_d
 //     input logic alusign_d
 //     input logic [3:0] aluctrl_d
-//     input logic alusrcb_d
+//     input logic [1:0]alusrcb_d
 //     input logic [1:0]alusrca_d
 //     input logic mem_write_d
 //     input logic mem_read_d
-//     input logic wbresult_d
+//     input logic [1:0]wbresult_d
 //     input logic [1:0]mem_digit_d
 //     input logic mem_sign_d
 //     input logic regwrite_d
@@ -24,7 +24,7 @@
 //     input logic [2:0]branch_type_d
 //     input logic cmpsrc_d
 //     input logic is_baj_d
-//     output logic wbresult_e
+//     output logic [1:0]wbresult_e
 //     output logic valid_e
 //     output logic [31:0] instr_e
 //     output logic [63:0] pc_e
@@ -38,12 +38,14 @@
 //     output logic cmpsrc_e
 //     output logic is_baj_e
 //     output logic [1:0]alusrca_e
-//     output logic alusrcb_e
+//     output logic [1:0]alusrcb_e
 //     output logic mem_write_e
 //     output logic mem_read_e
 //     output logic mem_sign_e
 //     output logic [1:0] mem_digit_e
 //     output logic regwrite_e
+//     input logic csrwrite_d
+//     output logic csrwrite_e
 //功能：流水寄存器，
 //     reset时全部归零。
 //     flush时全部归零。
@@ -56,11 +58,11 @@ module id_ex_reg (
     input  logic [4:0]  rd_d,
     input  logic        alusign_d,
     input  logic [3:0]  aluctrl_d,
-    input  logic        alusrcb_d,
+    input  logic [1:0]  alusrcb_d,
     input  logic [1:0]  alusrca_d,
     input  logic        mem_write_d,
     input  logic        mem_read_d,
-    input  logic        wbresult_d,
+    input  logic [1:0]  wbresult_d,
     input  logic [1:0]  mem_digit_d,
     input  logic        mem_sign_d,
     input  logic        regwrite_d,
@@ -74,8 +76,16 @@ module id_ex_reg (
     input  logic [2:0]  branch_type_d,
     input  logic        cmpsrc_d,
     input  logic [1:0]  is_baj_d,
+    input  logic        csrwrite_d,
+    input logic [11:0]      csr_num_d,
+    input logic [63:0]      csr_value_d,
+    input  logic [63:0] csr_operand_d,
+output logic [63:0] csr_operand_e,
 
-    output logic        wbresult_e,
+    output logic [11:0]      csr_num_e,
+    output logic [63:0]      csr_value_e,
+    output  logic        csrwrite_e,
+    output logic  [1:0] wbresult_e,
     output logic        valid_e,
     output logic [31:0] instr_e,
     output logic [63:0] pc_e,
@@ -89,7 +99,7 @@ module id_ex_reg (
     output logic        cmpsrc_e,
     output logic [1:0]  is_baj_e,
     output logic [1:0]  alusrca_e,
-    output logic        alusrcb_e,
+    output logic [1:0]  alusrcb_e,
     output logic        mem_write_e,
     output logic        mem_read_e,
     output logic        mem_sign_e,
@@ -99,7 +109,10 @@ module id_ex_reg (
 
 always_ff @(posedge clk) begin
     if (reset) begin
-        wbresult_e    <= 1'b0;
+        csr_operand_e <= 64'b0;
+        csr_num_e     <= 12'b0;
+        csr_value_e   <= 64'b0;
+        wbresult_e    <= 2'b0;
         valid_e       <= 1'b0;
         instr_e       <= 32'b0;
         pc_e          <= 64'b0;
@@ -113,15 +126,19 @@ always_ff @(posedge clk) begin
         cmpsrc_e      <= 1'b0;
         is_baj_e      <= 2'b0;
         alusrca_e     <= 2'b0;
-        alusrcb_e     <= 1'b0;
+        alusrcb_e     <= 2'b0;
         mem_write_e   <= 1'b0;
         mem_read_e    <= 1'b0;
         mem_sign_e    <= 1'b0;
         mem_digit_e   <= 2'b0;
         regwrite_e    <= 1'b0;
+        csrwrite_e    <= 1'b0;
     end
     else if (flush) begin
-        wbresult_e    <= 1'b0;
+        csr_operand_e <= 64'b0;
+        csr_num_e     <= 12'b0;
+        csr_value_e   <= 64'b0;
+        wbresult_e    <= 2'b0;
         valid_e       <= 1'b0;
         instr_e       <= 32'b0;
         pc_e          <= 64'b0;
@@ -135,14 +152,18 @@ always_ff @(posedge clk) begin
         cmpsrc_e      <= 1'b0;
         is_baj_e      <= 2'b0;
         alusrca_e     <= 2'b0;
-        alusrcb_e     <= 1'b0;
+        alusrcb_e     <= 2'b0;
         mem_write_e   <= 1'b0;
         mem_read_e    <= 1'b0;
         mem_sign_e    <= 1'b0;
         mem_digit_e   <= 2'b0;
         regwrite_e    <= 1'b0;
+        csrwrite_e    <= 1'b0;
     end
     else if (!id_ex_stall) begin
+        csr_operand_e <= csr_operand_d;
+        csr_num_e     <= csr_num_d ;
+        csr_value_e   <= csr_value_d;
         wbresult_e    <= wbresult_d;
         valid_e       <= valid_d;
         instr_e       <= instr_d;
@@ -163,6 +184,7 @@ always_ff @(posedge clk) begin
         mem_sign_e    <= mem_sign_d;
         mem_digit_e   <= mem_digit_d;
         regwrite_e    <= regwrite_d;
+        csrwrite_e    <=csrwrite_d;
     end
 end
 

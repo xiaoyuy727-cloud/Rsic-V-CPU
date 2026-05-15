@@ -1,5 +1,6 @@
 `ifdef VERILATOR
 `include "include/common.sv"
+`include "include/csr.sv"
 `include "src/alu_adder.sv"
 `include "src/alu.sv"
 `include "src/alures_mux.sv"
@@ -23,6 +24,7 @@
 `include "src/data_mem.sv"
 `include "src/imm_gen.sv"
 `include "src/wbres_mux.sv"
+`include "src/csr_file.sv"
 `endif
 
 module datapath import common::*;(
@@ -76,7 +78,20 @@ module datapath import common::*;(
     output logic [63:0] test_reg_x30,
     output logic [63:0] test_reg_x31,
     output logic mem,
-    output logic [63:0] memaddr
+    output logic [63:0] memaddr,
+
+    output logic [63:0] csr_mstatus,
+    output logic [63:0] csr_mtvec,
+    output logic [63:0] csr_mip,
+    output logic [63:0] csr_mie,
+    output logic [63:0] csr_mscratch,
+    output logic [63:0] csr_mcause,
+    output logic [63:0] csr_mtval,
+    output logic [63:0] csr_mepc,
+    output logic [63:0] csr_mcycle,
+    output logic [63:0] csr_mhartid,
+    output logic [63:0] csr_satp    
+
 );
 
     // =========================================================
@@ -107,6 +122,84 @@ module datapath import common::*;(
         .if_id_flush    (if_id_flush),
         .id_ex_flush    (id_ex_flush)
     );
+
+    // =========================================================
+    // csr
+    // =========================================================
+
+
+    logic [63:0] csr_value_d;
+    logic [63:0] csr_value_e;
+    logic [63:0] csr_value_m;
+    logic [63:0] csr_value_w;
+
+    logic [11:0] csr_num_d;
+    logic [11:0] csr_num_e;
+    logic [11:0] csr_num_m;
+    logic [11:0] csr_num_w;
+
+    logic [63:0] csr_operand_d;
+    logic [63:0] csr_operand_e;
+    logic [63:0] csr_operand_m;
+    logic [63:0] csr_operand_w;
+
+    logic csrwrite_d;
+    logic csrwrite_e;
+    logic csrwrite_m;
+    logic csrwrite_w;
+
+// CSR 写入 operand
+// 注意：这里不是最终写入 CSR 的值。
+// CSRRW/CSRRS/CSRRC 传 rs1_val。
+// CSRRWI/CSRRSI/CSRRCI 传 zimm。
+// 最终 OR / AND / CLEAR 仍然由 csr_file 根据 instr_m[14:12] 完成。
+always_comb begin
+    unique case (instr_d[14:12])
+        3'b001, 3'b010, 3'b011: begin
+            csr_operand_d = rs1_val_d;
+        end
+
+        3'b101, 3'b110, 3'b111: begin
+            csr_operand_d = {59'b0, instr_d[19:15]};
+        end
+
+        default: begin
+            csr_operand_d = 64'b0;
+        end
+    endcase
+end
+
+csr_file cf(
+    .clk    (clk),
+    .reset  (reset),
+
+    // D 阶段读 CSR 旧值
+    .instr_d(instr_d),
+
+    // M 阶段写 CSR
+    // 写在 M 阶段，是为了到 W 阶段 difftest commit 时 CSR 状态已经更新
+    .instr_w(instr_m),
+
+    .new_csr_num    (csr_num_m),
+    .new_csr_value  (csr_operand_m),
+    .csrwrite       (csrwrite_m & valid_m),
+
+    .csr_value      (csr_value_d),
+    .csr_num        (csr_num_d),
+
+    .csr_mtvec      (csr_mtvec),
+    .csr_mip        (csr_mip),
+    .csr_mie        (csr_mie),
+    .csr_mscratch   (csr_mscratch),
+    .csr_mcause     (csr_mcause),
+    .csr_mtval      (csr_mtval),
+    .csr_mepc       (csr_mepc),
+    .csr_mcycle     (csr_mcycle),
+    .csr_mhartid    (csr_mhartid),
+    .csr_satp       (csr_satp),
+    .csr_mstatus    (csr_mstatus)
+);
+
 
     // =========================================================
     // 1. IF
@@ -181,12 +274,12 @@ module datapath import common::*;(
     logic        alusign_d;
     logic [3:0]  aluctrl_d;
     logic [1:0]  alusrca_d;
-    logic        alusrcb_d;
+    logic [1:0]  alusrcb_d;
     logic        regwrite_d;
     logic        mem_write_d;
     logic        mem_read_d;
     logic        mem_sign_d;
-    logic        wb_result_d;
+    logic [1:0]  wb_result_d;
     logic [1:0]  mem_digit_d;
 
     logic        cmpsrc_d;
@@ -229,6 +322,7 @@ module datapath import common::*;(
         .wb_result_d   (wb_result_d),
         .mem_digit_d   (mem_digit_d),
         .alusrca_d     (alusrca_d),
+        .csrwrite_d    (csrwrite_d),
 
         .cmpsrc_d      (cmpsrc_d),
         .is_baj_d      (is_baj_d),
@@ -302,10 +396,10 @@ module datapath import common::*;(
     logic        alusign_e;
     logic [3:0]  aluctrl_e;
     logic [1:0]  alusrca_e;
-    logic        alusrcb_e;
+    logic [1:0]   alusrcb_e;
     logic        mem_write_e;
     logic        mem_read_e;
-    logic        wbresult_e;
+    logic [1:0]   wbresult_e;
     logic [1:0]  mem_digit_e;
     logic        mem_sign_e;
     logic        regwrite_e;
@@ -315,6 +409,8 @@ module datapath import common::*;(
     logic [1:0]  is_baj_e;
 
     id_ex_reg id_ex(
+        .csr_operand_d(csr_operand_d),
+        .csr_operand_e(csr_operand_e),
         .clk           (clk),
         .rs1_val_d     (rs1_val_d),
         .rs2_val_d     (rs2_val_d),
@@ -339,7 +435,13 @@ module datapath import common::*;(
         .branch_type_d (branch_type_d),
         .cmpsrc_d      (cmpsrc_d),
         .is_baj_d      (is_baj_d),
+        .csrwrite_d  (csrwrite_d),
+        .csr_num_d  (csr_num_d),
+        .csr_value_d(csr_value_d),
+        .csr_num_e  (csr_num_e),
+        .csr_value_e(csr_value_e),
 
+        .csrwrite_e  (csrwrite_e),
         .wbresult_e    (wbresult_e),
         .valid_e       (valid_e),
         .instr_e       (instr_e),
@@ -468,7 +570,7 @@ end
     // =========================================================
     // EX/MEM
     // =========================================================
-    logic        wb_result_m;
+    logic [1:0]  wb_result_m;
     logic        mem_write_m;
     logic        mem_read_m;
     logic        mem_sign_m;
@@ -480,6 +582,8 @@ end
     logic [1:0]  is_baj_m;
 
     ex_mem_reg ex_mem(
+        .csr_operand_e(csr_operand_e),
+        .csr_operand_m(csr_operand_m),
         .mem_write_e        (mem_write_e),
         .mem_read_e         (mem_read_e),
         .mem_sign_e         (mem_sign_e),
@@ -496,7 +600,13 @@ end
         .rs2_val_e          (rs2_eff_e),
         .ex_mem_stall       (ex_mem_stall),
         .is_baj_e           (is_baj_e),
+        .csrwrite_e  (csrwrite_e),
+        .csr_num_e  (csr_num_e),
+        .csr_value_e(csr_value_e),
+        .csr_num_m  (csr_num_m),
+        .csr_value_m(csr_value_m),
 
+        .csrwrite_m  (csrwrite_m),
         .wb_result_m        (wb_result_m),
         .valid_m            (valid_m),
         .pc_m               (pc_m),
@@ -536,7 +646,7 @@ end
     // =========================================================
     // MEM/WB
     // =========================================================
-    logic        wb_result_w;
+    logic [1:0]  wb_result_w;
     logic [63:0] aluout_w;
     logic [1:0]  is_baj_w;
 
@@ -553,7 +663,13 @@ end
         .valid_m          (valid_m),
         .mem_wb_stall     (mem_wb_stall),
         .is_baj_m         (is_baj_m),
+        .csrwrite_m  (csrwrite_m),
+        .csrwrite_w  (csrwrite_w),
 
+        .csr_num_m  (csr_num_m),
+        .csr_value_m (csr_value_m),
+        .csr_num_w  (csr_num_w),
+        .csr_value_w(csr_value_w),
         .is_baj_w         (is_baj_w),
         .mem_write_data_w (mem_write_data_w),
         .wb_result_w      (wb_result_w),
@@ -574,7 +690,8 @@ end
         .aluout_w         (aluout_w),
         .mem_write_data_w (mem_write_data_w),
         .pc_w             (pc_w),
-        .wb_write_data    (wb_write_data)
+        .wb_write_data    (wb_write_data),
+        .csr_value_w      (csr_value_w)
     );
 
     // =========================================================

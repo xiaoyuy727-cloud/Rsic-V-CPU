@@ -5,14 +5,15 @@ module control_unit (
 
     output logic       alusign_d,
     output logic [3:0] aluctrl_d,
-    output logic       alusrcb_d,
+    output logic [1:0]  alusrcb_d,
     output logic       regwrite_d,
     output logic       mem_write_d,
     output logic       mem_read_d,
     output logic       mem_sign_d,
-    output logic       wb_result_d,
+    output logic [1:0] wb_result_d,
     output logic [1:0] mem_digit_d,
     output logic [1:0] alusrca_d,
+    output logic       csrwrite_d,
 
     output logic       cmpsrc_d,
     output logic [1:0] is_baj_d,
@@ -24,24 +25,37 @@ always_comb begin
     alusign_d    = 1'b0;
     aluctrl_d    = 4'd0;
     alusrca_d    = 2'd0;
-    alusrcb_d    = 1'b0;
+    alusrcb_d    = 2'b0;
     regwrite_d   = 1'b0;
     mem_write_d  = 1'b0;
     mem_read_d   = 1'b0;
     mem_sign_d   = 1'b0;
-    wb_result_d  = 1'b0;
+    wb_result_d  = 2'b0;
     mem_digit_d  = 2'd0;
 
     cmpsrc_d     = 1'b0;
     is_baj_d     = 2'd0;
     branch_type_d = 3'd0;
+    csrwrite_d=  1'd0;
 
     case (opcode)
 
         // ================= I-type =================
+        7'b1110011: begin
+            regwrite_d=1'b1;
+            wb_result_d=2'b11;
+            csrwrite_d=1'b1;
+
+            case(funct3)
+                3'b001,3'b010,3'b011:alusrca_d=2'b01;
+                3'b101,3'b110,3'b111:alusrcb_d=2'b01;
+                default:;
+            endcase
+        end
+
         7'b0010011: begin
             alusrca_d  = 2'd1;   // rs1
-            alusrcb_d  = 1'b1;   // imm
+            alusrcb_d  = 2'b01;   // imm
             regwrite_d = 1'b1;
 
             case (funct3)
@@ -60,7 +74,7 @@ always_comb begin
         // ================= R-type =================
         7'b0110011: begin
             alusrca_d  = 2'd1;   // rs1
-            alusrcb_d  = 1'b0;   // rs2
+            alusrcb_d  = 2'b0;   // rs2
             regwrite_d = 1'b1;
 
             case (funct3)
@@ -80,7 +94,7 @@ always_comb begin
         7'b0011011: begin
             alusign_d  = 1'b1;
             alusrca_d  = 2'd1;   // rs1
-            alusrcb_d  = 1'b1;   // imm
+            alusrcb_d  = 2'b01;   // imm
             regwrite_d = 1'b1;
 
             case (funct3)
@@ -95,7 +109,7 @@ always_comb begin
         7'b0111011: begin
             alusign_d  = 1'b1;
             alusrca_d  = 2'd1;   // rs1
-            alusrcb_d  = 1'b0;   // rs2
+            alusrcb_d  = 2'b00;   // rs2
             regwrite_d = 1'b1;
 
             case (funct3)
@@ -109,10 +123,10 @@ always_comb begin
         // ================= LOAD =================
         7'b0000011: begin
             alusrca_d   = 2'd1;  // rs1
-            alusrcb_d   = 1'b1;  // imm
+            alusrcb_d   = 2'b01;  // imm
             regwrite_d  = 1'b1;
             mem_read_d  = 1'b1;
-            wb_result_d = 1'b1;  // write back from memory
+            wb_result_d = 2'b01;  // write back from memory
             aluctrl_d   = 4'd0;  // address = rs1 + imm
 
             case (funct3)
@@ -130,7 +144,7 @@ always_comb begin
         // ================= STORE =================
         7'b0100011: begin
             alusrca_d   = 2'd1;  // rs1
-            alusrcb_d   = 1'b1;  // imm
+            alusrcb_d   = 2'b01;  // imm
             mem_write_d = 1'b1;
             aluctrl_d   = 4'd0;  // address = rs1 + imm
 
@@ -147,7 +161,7 @@ always_comb begin
         7'b0110111: begin
             regwrite_d = 1'b1;
             alusrca_d  = 2'd0;   // zero
-            alusrcb_d  = 1'b1;   // imm
+            alusrcb_d  = 2'b01;   // imm
             aluctrl_d  = 4'd0;   // 0 + imm
         end
 
@@ -155,14 +169,14 @@ always_comb begin
         7'b0010111: begin
             regwrite_d = 1'b1;
             alusrca_d  = 2'd2;   // pc
-            alusrcb_d  = 1'b1;   // imm
+            alusrcb_d  = 2'b01;   // imm
             aluctrl_d  = 4'd0;   // pc + imm
         end
 
         // ================= BRANCH =================
         7'b1100011: begin
             alusrca_d = 2'd2;    // pc
-            alusrcb_d = 1'b1;    // imm
+            alusrcb_d = 2'b01;    // imm
             aluctrl_d = 4'd0;    // target = pc + imm
             is_baj_d  = 2'd1;    // branch
 
@@ -181,7 +195,7 @@ always_comb begin
         7'b1101111: begin
             regwrite_d = 1'b1;
             alusrca_d  = 2'd2;   // pc
-            alusrcb_d  = 1'b1;   // imm
+            alusrcb_d  = 2'b01;   // imm
             aluctrl_d  = 4'd0;   // target = pc + imm
             is_baj_d   = 2'd2;   // jal
         end
@@ -190,7 +204,7 @@ always_comb begin
         7'b1100111: begin
             regwrite_d = 1'b1;
             alusrca_d  = 2'd1;   // rs1
-            alusrcb_d  = 1'b1;   // imm
+            alusrcb_d  = 2'b01;   // imm
             aluctrl_d  = 4'd0;   // target = rs1 + imm
             is_baj_d   = 2'd3;   // jalr
         end

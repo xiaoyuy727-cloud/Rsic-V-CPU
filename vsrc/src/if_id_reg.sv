@@ -22,6 +22,7 @@ module if_id_reg (
     input  logic        reset,
     input  logic        if_id_stall,
     input  logic        flush,
+    
 
     output logic [31:0] instr_d,
     output logic        valid_d,
