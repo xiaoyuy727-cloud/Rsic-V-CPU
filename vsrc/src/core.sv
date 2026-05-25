@@ -17,7 +17,10 @@ module core import common::*;(
 	input  logic       trint, swint, exint
 );
 	/* TODO: Add your CPU-Core here. */
-		logic [63:0] test_reg_x0;
+
+	logic [1:0] privil_mode;
+	
+	logic [63:0] test_reg_x0;
 	logic [63:0] test_reg_x1;
 	logic [63:0] test_reg_x2;
 	logic [63:0] test_reg_x3;
@@ -136,7 +139,9 @@ module core import common::*;(
 		.csr_mepc	 (csr_mepc),
 		.csr_mcycle	 (csr_mcycle),
 		.csr_mhartid (csr_mhartid),
-		.csr_satp	 (csr_satp)
+		.csr_satp	 (csr_satp),
+
+		.privil_mode   (privil_mode)
 	);
 
 `ifdef VERILATOR
@@ -205,7 +210,7 @@ module core import common::*;(
 	DifftestCSRState DifftestCSRState(
 		.clock              (clk),
 		.coreid             (0),
-		.priviledgeMode     (3),
+		.priviledgeMode     (privil_mode),
 		.mstatus            (csr_mstatus),
 		.sstatus		    (csr_mstatus & 64'h8000_0003_000D_E122),
 		.mepc               (csr_mepc),

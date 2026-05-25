@@ -24,6 +24,10 @@
 //     input logic [2:0]branch_type_d
 //     input logic cmpsrc_d
 //     input logic is_baj_d
+//     input logic is_ecall_d
+//     input logic is_mret_d
+//     output logic is_mret_e
+//     output logic is_ecall_e
 //     output logic [1:0]wbresult_e
 //     output logic valid_e
 //     output logic [31:0] instr_e
@@ -80,7 +84,12 @@ module id_ex_reg (
     input logic [11:0]      csr_num_d,
     input logic [63:0]      csr_value_d,
     input  logic [63:0] csr_operand_d,
-output logic [63:0] csr_operand_e,
+    output logic [63:0] csr_operand_e,
+
+    input logic is_ecall_d,
+    input logic is_mret_d,
+    output logic is_mret_e,
+    output logic is_ecall_e,
 
     output logic [11:0]      csr_num_e,
     output logic [63:0]      csr_value_e,
@@ -133,6 +142,8 @@ always_ff @(posedge clk) begin
         mem_digit_e   <= 2'b0;
         regwrite_e    <= 1'b0;
         csrwrite_e    <= 1'b0;
+        is_ecall_e    <= 1'b0;
+        is_mret_e    <= 1'b0;
     end
     else if (flush) begin
         csr_operand_e <= 64'b0;
@@ -159,6 +170,8 @@ always_ff @(posedge clk) begin
         mem_digit_e   <= 2'b0;
         regwrite_e    <= 1'b0;
         csrwrite_e    <= 1'b0;
+        is_ecall_e    <= 1'b0;
+        is_mret_e    <= 1'b0;
     end
     else if (!id_ex_stall) begin
         csr_operand_e <= csr_operand_d;
@@ -185,6 +198,8 @@ always_ff @(posedge clk) begin
         mem_digit_e   <= mem_digit_d;
         regwrite_e    <= regwrite_d;
         csrwrite_e    <=csrwrite_d;
+        is_mret_e     <= is_mret_d;
+        is_ecall_e    <= is_ecall_d;
     end
 end
 

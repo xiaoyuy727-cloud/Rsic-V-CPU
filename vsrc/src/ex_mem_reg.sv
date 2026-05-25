@@ -9,6 +9,7 @@
 //     input logic regwrite_e
 //     input logic is_baj_e
 //     input logic clk
+//     input logic flush
 //     input logic reset
 //     input logic [63:0] pc_e 
 //     input logic [31:0] instr_e 
@@ -16,6 +17,10 @@
 //     input logic [63:0] rs2_val_e
 //     input logic ex_mem_stall
 //     input logic csrwrite_e
+//     input logic is_ecall_e
+//     input logic is_mret_e
+//     output logic is_mret_m
+//     output logic is_ecall_m
 //     output logic csrwrite_m
 //     output logic [1:0]wb_result_m
 //     output logic valid_m
@@ -33,6 +38,7 @@
 //功能：流水寄存器，reset清零。每一拍,当stall为0时，将输入的“e”类量写入对应的“m”类量
 
 module ex_mem_reg (
+    input logic         flush,
     input  logic        mem_write_e,
     input  logic        mem_read_e,
     input  logic        mem_sign_e,
@@ -53,7 +59,12 @@ module ex_mem_reg (
     input logic [11:0]      csr_num_e,
     input logic [63:0]      csr_value_e,
     input  logic [63:0] csr_operand_e,
-output logic [63:0] csr_operand_m,
+    output logic [63:0] csr_operand_m,
+
+    input logic is_ecall_e,
+    input logic is_mret_e,
+    output logic is_mret_m,
+    output logic is_ecall_m,
 
     output logic [11:0]      csr_num_m,
     output logic [63:0]      csr_value_m,
@@ -75,7 +86,7 @@ output logic [63:0] csr_operand_m,
 );
 
     always_ff @(posedge clk) begin
-        if (reset) begin
+        if (reset | flush) begin
             
             csr_num_m     <= 12'b0;
             csr_operand_m <= 64'b0;
@@ -94,6 +105,8 @@ output logic [63:0] csr_operand_m,
             rs2_val_m          <= 64'b0;
             is_baj_m           <= 2'b0;
             csrwrite_m         <= 1'b0;
+            is_ecall_m         <= 1'b0;
+            is_mret_m         <= 1'b0;
         end
         else if (!ex_mem_stall) begin
 
@@ -114,6 +127,8 @@ output logic [63:0] csr_operand_m,
             rs2_val_m          <= rs2_val_e;
             is_baj_m           <= is_baj_e;
             csrwrite_m         <= csrwrite_e;
+            is_ecall_m         <= is_ecall_e;
+            is_mret_m          <= is_mret_e;
         end
     end
 

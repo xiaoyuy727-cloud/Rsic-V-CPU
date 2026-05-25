@@ -2,6 +2,7 @@ module control_unit (
     input  logic [2:0] funct3,
     input  logic [6:0] opcode,
     input  logic       bit30,
+    input  logic [11:0] immediate,
 
     output logic       alusign_d,
     output logic [3:0] aluctrl_d,
@@ -14,6 +15,8 @@ module control_unit (
     output logic [1:0] mem_digit_d,
     output logic [1:0] alusrca_d,
     output logic       csrwrite_d,
+    output logic       is_ecall_d,
+    output logic       is_mret_d,
 
     output logic       cmpsrc_d,
     output logic [1:0] is_baj_d,
@@ -22,6 +25,8 @@ module control_unit (
 
 always_comb begin
     // default values
+    is_ecall_d = 1'b0;
+    is_mret_d  = 1'b0;
     alusign_d    = 1'b0;
     aluctrl_d    = 4'd0;
     alusrca_d    = 2'd0;
@@ -42,13 +47,35 @@ always_comb begin
 
         // ================= I-type =================
         7'b1110011: begin
-            regwrite_d=1'b1;
-            wb_result_d=2'b11;
-            csrwrite_d=1'b1;
+
+            
 
             case(funct3)
-                3'b001,3'b010,3'b011:alusrca_d=2'b01;
-                3'b101,3'b110,3'b111:alusrcb_d=2'b01;
+                3'b000:begin
+
+                    case(immediate)
+                        12'h000:is_ecall_d=1'b1;
+                        12'h302:is_mret_d=1'b1;
+                        default:;
+                    endcase
+
+                end
+                3'b001,3'b010,3'b011:begin
+
+                    alusrca_d=2'b01;
+                    regwrite_d=1'b1;
+                    wb_result_d=2'b11;
+                    csrwrite_d=1'b1;
+
+                end
+                3'b101,3'b110,3'b111:begin
+
+                    regwrite_d=1'b1;
+                    wb_result_d=2'b11;
+                    csrwrite_d=1'b1;
+                    alusrcb_d=2'b01;
+
+                end
                 default:;
             endcase
         end

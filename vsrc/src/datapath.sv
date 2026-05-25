@@ -25,6 +25,11 @@
 `include "src/imm_gen.sv"
 `include "src/wbres_mux.sv"
 `include "src/csr_file.sv"
+`include "src/final_redirect_pc_unit.sv"
+`include "src/privilege_unit.sv"
+`include "src/dbus_arbiter.sv"
+`include "src/mmu.sv"
+`include "src/ibus_to_dbus.sv"
 `endif
 
 module datapath import common::*;(
@@ -90,9 +95,90 @@ module datapath import common::*;(
     output logic [63:0] csr_mepc,
     output logic [63:0] csr_mcycle,
     output logic [63:0] csr_mhartid,
-    output logic [63:0] csr_satp    
+    output logic [63:0] csr_satp,
+
+    output logic [1:0] privil_mode    
 
 );
+
+
+
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if ((is_mret_w && valid_w) || (is_ecall_w && valid_w)) begin
+        $display("[DP TRAPRET] pc_w=%h instr_w=%h valid_w=%b is_mret_w=%b is_ecall_w=%b csr_mepc=%h csr_mtvec=%h final_redirect_pc=%h privil=%0d satp=%h",
+                 pc_w, instr_w, valid_w, is_mret_w, is_ecall_w,
+                 csr_mepc, csr_mtvec, final_redirect_pc, privil_mode, csr_satp);
+    end
+end
+`endif
+
+
+
+
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (is_mret_w || is_ecall_w) begin
+        $display("[DP TRAPRET] pc_w=%h instr_w=%h valid_w=%b is_mret_w=%b is_ecall_w=%b csr_mepc=%h csr_mtvec=%h final_redirect_pc=%h",
+                 pc_w, instr_w, valid_w, is_mret_w, is_ecall_w,
+                 csr_mepc, csr_mtvec, final_redirect_pc);
+    end
+end
+`endif
+
+
+
+    // MMU & bus
+    logic mmu_flush;
+
+    assign mmu_flush = is_ecall_w | is_mret_w;
+
+    ibus_resp_t  real_ibus_resp;
+    ibus_req_t   real_ibus_req;
+
+    dbus_resp_t  real_dbus_resp;
+    dbus_req_t   real_dbus_req;
+
+    dbus_resp_t  virtual_dbus_resp;
+    dbus_req_t   virtual_dbus_req;
+
+    dbus_resp_t  instr_dbus_resp;
+    dbus_req_t   instr_dbus_req;
+
+
+    ibus_to_dbus itb(
+        .clk        (clk),
+        .reset      (reset),
+        .iresp      (real_ibus_resp), 
+        .ireq       (real_ibus_req),
+        .dreq       (instr_dbus_req),
+        .dresp      (instr_dbus_resp)
+    );
+
+    dbus_arbiter ab(
+        .clk    (clk),
+        .reset  (reset),
+        .reqs   ({instr_dbus_req,real_dbus_req}),
+        .resps  ({instr_dbus_resp,real_dbus_resp}),
+        .final_req  (virtual_dbus_req),
+        .final_resp (virtual_dbus_resp)
+    );
+    mmu mmu(
+        .clk    (clk),
+        .reset  (reset),
+        .flush       (mmu_flush),
+        .cpu_req    (virtual_dbus_req),
+        .cpu_resp   (virtual_dbus_resp),
+        .mem_req    (dbus_req),
+        .mem_resp   (dbus_resp),
+        .satp       (csr_satp),
+        .privil_mode       (privil_mode)
+    );
+
+
+    assign ibus_req='0;
+
+
 
     // =========================================================
     // stall / flush / redirect
@@ -106,11 +192,15 @@ module datapath import common::*;(
 
     logic if_id_flush;
     logic id_ex_flush;
+    logic ex_mem_flush;
+    logic mem_wb_flush;
 
     logic        redirect_valid;
     logic [63:0] redirect_pc;
 
     saf_unit st(
+        .is_ecall       (is_ecall_w),
+        .is_mret        (is_mret_w),
         .load_use_stall (load_use_stall),
         .mem_stall      (mem_stall),
         .redirect_valid (redirect_valid),
@@ -120,14 +210,16 @@ module datapath import common::*;(
         .ex_mem_stall   (ex_mem_stall),
         .mem_wb_stall   (mem_wb_stall),
         .if_id_flush    (if_id_flush),
-        .id_ex_flush    (id_ex_flush)
+        .id_ex_flush    (id_ex_flush),
+        .ex_mem_flush   (ex_mem_flush),
+        .mem_wb_flush   (mem_wb_flush)  //暂时写成0.避免mret、iecall把自己flush掉。
     );
 
     // =========================================================
     // csr
     // =========================================================
 
-
+    
     logic [63:0] csr_value_d;
     logic [63:0] csr_value_e;
     logic [63:0] csr_value_m;
@@ -187,6 +279,11 @@ csr_file cf(
     .csr_value      (csr_value_d),
     .csr_num        (csr_num_d),
 
+    .pc_w           (pc_w),
+    .is_ecall       (is_ecall_w & valid_w),
+    .is_mret        (is_mret_w & valid_w),
+    .privil_mode    (privil_mode),
+
     .csr_mtvec      (csr_mtvec),
     .csr_mip        (csr_mip),
     .csr_mie        (csr_mie),
@@ -199,6 +296,33 @@ csr_file cf(
     .csr_satp       (csr_satp),
     .csr_mstatus    (csr_mstatus)
 );
+
+    // =========================================================
+    // PRIVILEGE_UNIT
+    // =========================================================
+    logic is_ecall_f;
+    logic is_ecall_d;
+    logic is_ecall_e;
+    logic is_ecall_m;
+    logic is_ecall_w;
+
+    logic is_mret_f;
+    logic is_mret_d;
+    logic is_mret_e;
+    logic is_mret_m;
+    logic is_mret_w;
+
+
+
+    privilege_unit pu(
+        .clk        (clk),
+        .rst        (reset),
+        .privil_mode    (privil_mode),
+        .is_ecall   (is_ecall_w & valid_w),
+        .is_mret    (is_mret_w & valid_w),
+        .mpp        (csr_mstatus[12:11])
+
+    );
 
 
     // =========================================================
@@ -231,14 +355,16 @@ csr_file cf(
         .reset          (reset),
         .consume        (fetch_consume),
         .pc_stall       (pc_stall),
-        .ibus_resp      (ibus_resp),
+        .ibus_resp      (real_ibus_resp),
         .pcinit         (PCINIT),
-        .redirect_pc    (redirect_pc),
-        .redirect_valid (redirect_valid),
+        .redirect_pc    (final_redirect_pc),
+        .branch_redirect_valid (redirect_valid),
+        .is_ecall       (is_ecall_w & valid_w),
+        .is_mret        (is_mret_w & valid_w),
 
         .fetch_ok       (fetch_ok),
         .instr          (instr_f),
-        .ibus_req       (ibus_req),
+        .ibus_req       (real_ibus_req),
         .instr_pc       (pc_f)
     );
 
@@ -266,6 +392,7 @@ csr_file cf(
     logic [4:0]  rs2;
     logic [4:0]  rd;
     logic [6:0]  opcode;
+    logic [11:0] immediate;
 
     logic [63:0] imm_d;
     logic [63:0] rs1_val_d;
@@ -292,6 +419,7 @@ csr_file cf(
     assign funct3 = instr_d[14:12];
     assign rs1    = instr_d[19:15];
     assign rs2    = instr_d[24:20];
+    assign immediate = instr_d[31:20];
 
     logic [4:0] rs1_d, rs2_d;//就是rs1和rs2，接给load use hazard
     logic load_use_stall;
@@ -311,6 +439,7 @@ csr_file cf(
         .funct3        (funct3),
         .opcode        (opcode),
         .bit30         (instr_d[30]),
+        .immediate      (immediate),
 
         .alusign_d     (alusign_d),
         .aluctrl_d     (aluctrl_d),
@@ -323,6 +452,8 @@ csr_file cf(
         .mem_digit_d   (mem_digit_d),
         .alusrca_d     (alusrca_d),
         .csrwrite_d    (csrwrite_d),
+        .is_ecall_d     (is_ecall_d),
+        .is_mret_d      (is_mret_d),
 
         .cmpsrc_d      (cmpsrc_d),
         .is_baj_d      (is_baj_d),
@@ -438,6 +569,12 @@ csr_file cf(
         .csrwrite_d  (csrwrite_d),
         .csr_num_d  (csr_num_d),
         .csr_value_d(csr_value_d),
+
+        .is_ecall_d (is_ecall_d),
+        .is_mret_d  (is_mret_d),
+        .is_ecall_e (is_ecall_e),
+        .is_mret_e  (is_mret_e),
+
         .csr_num_e  (csr_num_e),
         .csr_value_e(csr_value_e),
 
@@ -567,6 +704,17 @@ end
         .redirect_pc (redirect_pc)
     );
 
+    logic [63:0] final_redirect_pc;
+
+    final_redirect_pc_unit frp(
+        .branch_redirect_pc  (redirect_pc),
+        .final_redirect_pc   (final_redirect_pc),
+        .csr_mepc            (csr_mepc),
+        .csr_mtvec           (csr_mtvec),
+        .is_ecall            (is_ecall_w & valid_w),
+        .is_mret             (is_mret_w & valid_w)
+    );
+
     // =========================================================
     // EX/MEM
     // =========================================================
@@ -582,6 +730,7 @@ end
     logic [1:0]  is_baj_m;
 
     ex_mem_reg ex_mem(
+        .flush          (ex_mem_flush),
         .csr_operand_e(csr_operand_e),
         .csr_operand_m(csr_operand_m),
         .mem_write_e        (mem_write_e),
@@ -606,6 +755,11 @@ end
         .csr_num_m  (csr_num_m),
         .csr_value_m(csr_value_m),
 
+        .is_ecall_m (is_ecall_m),
+        .is_mret_m  (is_mret_m),
+        .is_ecall_e (is_ecall_e),
+        .is_mret_e  (is_mret_e),
+
         .csrwrite_m  (csrwrite_m),
         .wb_result_m        (wb_result_m),
         .valid_m            (valid_m),
@@ -629,6 +783,8 @@ end
     logic [63:0] mem_write_data_w;
 
     data_mem MEM1(
+        .clk            (clk),
+        .rst            (reset),
         .valid_m        (valid_m),
         .address        (aluout_m),
         .mem_write_data (rs2_val_m),
@@ -637,8 +793,8 @@ end
         .mem_digit_m    (mem_digit_m),
         .mem_sign_m     (mem_sign_m),
 
-        .dresp          (dbus_resp),
-        .dreq           (dbus_req),
+        .dresp          (real_dbus_resp),
+        .dreq           (real_dbus_req),
 
         .mem_read_data  (mem_read_data_m),
         .mem_stall      (mem_stall)
@@ -651,6 +807,7 @@ end
     logic [1:0]  is_baj_w;
 
     mem_wb_reg mem_wb(
+        .flush            (1'b0),//暂时写成0，防止把自己刷掉。
         .aluout_m         (aluout_m),
         .mem_write_data_m (mem_read_data_m),
         .rd_m             (rd_m),
@@ -665,6 +822,11 @@ end
         .is_baj_m         (is_baj_m),
         .csrwrite_m  (csrwrite_m),
         .csrwrite_w  (csrwrite_w),
+
+        .is_ecall_m (is_ecall_m),
+        .is_mret_m  (is_mret_m),
+        .is_ecall_w (is_ecall_w),
+        .is_mret_w (is_mret_w),
 
         .csr_num_m  (csr_num_m),
         .csr_value_m (csr_value_m),

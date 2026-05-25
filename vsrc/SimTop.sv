@@ -47,6 +47,18 @@ module SimTop import common::*;(
         .clk(clock), .reset, .oreq, .oresp, .trint, .swint, .exint
     );
 
+`ifdef DEBUG
+always_ff @(posedge clock) begin
+    if (!reset) begin
+        if (oreq.valid && |oreq.strobe) begin
+            $display("[CBUS_OUT] addr=%h strobe=%h data=%h ready=%b last=%b",
+                     oreq.addr, oreq.strobe, oreq.data,
+                     oresp.ready, oresp.last);
+        end
+    end
+end
+`endif
+
     assign {io_uart_out_valid, io_uart_out_ch, io_uart_in_valid} = '0;
 
 endmodule

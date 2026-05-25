@@ -29,6 +29,8 @@ import common::*;
 
 
 module data_mem (
+    input logic         clk,
+    input logic         rst,
     input  logic        valid_m,
     input  logic [63:0] address,
     input  logic [63:0] mem_write_data,
@@ -43,6 +45,22 @@ module data_mem (
     output logic [63:0] mem_read_data,
     output logic        mem_stall
 );
+
+
+
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (!rst) begin
+        if (dreq.valid && |dreq.strobe) begin
+            $display("[DMEM_REQ] valid=%b addr=%h strobe=%h data=%h addr_ok=%b data_ok=%b mem_stall=%b",
+                     dreq.valid, dreq.addr, dreq.strobe, dreq.data,
+                     dresp.addr_ok, dresp.data_ok, mem_stall);
+        end
+    end
+end
+`endif
+
+
 
     logic [2:0]  offset;
     logic [7:0]  base_strobe;

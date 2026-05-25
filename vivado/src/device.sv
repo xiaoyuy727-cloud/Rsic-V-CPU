@@ -207,6 +207,6 @@ module device #(
 			end
 		end
 	end
-	
-	
+
+
 endmodule
