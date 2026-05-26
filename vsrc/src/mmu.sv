@@ -2,13 +2,10 @@
 `include "include/common.sv"
 `endif
 
-//功能：输入dbus，输出dbus，把dbus的addr进行翻译。
-
-module mmu import common ::*;(
-
-    input logic clk,
-    input logic reset,
-    input logic flush,
+module mmu import common::*;(
+    input  logic clk,
+    input  logic reset,
+    input  logic flush,
 
     input  dbus_req_t  cpu_req,
     output dbus_resp_t cpu_resp,
@@ -16,15 +13,22 @@ module mmu import common ::*;(
     output dbus_req_t  mem_req,
     input  dbus_resp_t mem_resp,
 
-    input logic [1:0] privil_mode,
-    input logic [63:0] satp
-
+    input  logic [1:0]  privil_mode,
+    input  logic [63:0] satp
 );
 
-    dbus_resp_t cpu_resp_r;
-    dbus_resp_t cpu_resp_comb;
-
-    assign cpu_resp = cpu_resp_comb;
+    typedef enum logic [3:0] {
+        IDLE   = 4'd0,
+        REQ_2  = 4'd1,
+        WAIT_2 = 4'd2,
+        REQ_1  = 4'd3,
+        WAIT_1 = 4'd4,
+        REQ_0  = 4'd5,
+        WAIT_0 = 4'd6,
+        REQ_P  = 4'd7,
+        WAIT_P = 4'd8,
+        RESP   = 4'd9
+    } state_t;
 
     typedef enum logic [1:0] {
         KILL_NONE = 2'b00,
@@ -32,186 +36,165 @@ module mmu import common ::*;(
         KILL_DATA = 2'b10
     } kill_state_t;
 
+    state_t      cur;
     kill_state_t kill_state;
 
-    always_comb begin
-        cpu_resp_comb = cpu_resp_r;
+    dbus_req_t  saved_req;
+    dbus_resp_t saved_resp;
 
-        if (kill_state == KILL_ADDR) begin
-            cpu_resp_comb.addr_ok = 1'b1;
-            cpu_resp_comb.data_ok = 1'b0;
-            cpu_resp_comb.data    = 64'b0;
-        end
-        else if (kill_state == KILL_DATA) begin
-            cpu_resp_comb.addr_ok = 1'b0;
-            cpu_resp_comb.data_ok = 1'b1;
-            cpu_resp_comb.data    = 64'b0;
-        end
-    end
-
-    dbus_req_t cpu_req_eff;
-
-    logic translate;
-    dbus_req_t saved_req;
-
-    logic [8:0] vpn2, vpn1, vpn0;
+    logic [8:0]  vpn2, vpn1, vpn0;
     logic [63:0] root_addr;
+    logic [63:0] pt_addr;
     logic [63:0] pte;
     logic [63:0] paddr;
-    logic [63:0] pt_addr;
-    logic [63:0] vaddr;
+
+    logic translate;
+
+    assign translate = cpu_req.valid
+                     && (privil_mode != 2'b11)
+                     && (satp[63:60] == 4'd8);
 
     always_comb begin
-        cpu_req_eff = cpu_req;
+        cpu_resp = '0;
 
-        // flush 或 kill response 期间，不允许 MMU 接收旧路径请求
-        if (flush || kill_state != KILL_NONE) begin
-            cpu_req_eff.valid = 1'b0;
+        if (kill_state == KILL_ADDR) begin
+            cpu_resp.addr_ok = 1'b1;
+            cpu_resp.data_ok = 1'b0;
+            cpu_resp.data    = 64'b0;
+        end
+        else if (kill_state == KILL_DATA) begin
+            cpu_resp.addr_ok = 1'b0;
+            cpu_resp.data_ok = 1'b1;
+            cpu_resp.data    = 64'b0;
+        end
+        else if (cur == RESP) begin
+            cpu_resp = saved_resp;
         end
     end
 
-    assign translate = cpu_req_eff.valid
-                     & (privil_mode != 2'b11)
-                     & (satp[63:60] == 4'd8);
+    always_comb begin
+        mem_req = '0;
 
-    assign vaddr = cpu_req_eff.addr;
+        if (!flush && kill_state == KILL_NONE) begin
+            case (cur)
+                REQ_2, WAIT_2: begin
+                    mem_req.valid  = 1'b1;
+                    mem_req.addr   = root_addr + ({55'b0, vpn2} << 3);
+                    mem_req.size   = MSIZE8;
+                    mem_req.strobe = 8'b0;
+                    mem_req.data   = 64'b0;
+                end
 
-    typedef enum logic [3:0] {
-        IDLE    = 4'b0000,
-        REQ_2   = 4'b0001,
-        WAIT_2  = 4'b0010,
-        REQ_1   = 4'b0011,
-        WAIT_1  = 4'b0100,
-        REQ_0   = 4'b0101,
-        WAIT_0  = 4'b0110,
-        REQ_P   = 4'b0111,
-        WAIT_P  = 4'b1000
-    } state_t;
+                REQ_1, WAIT_1: begin
+                    mem_req.valid  = 1'b1;
+                    mem_req.addr   = pt_addr + ({55'b0, vpn1} << 3);
+                    mem_req.size   = MSIZE8;
+                    mem_req.strobe = 8'b0;
+                    mem_req.data   = 64'b0;
+                end
 
-    state_t cur;
+                REQ_0, WAIT_0: begin
+                    mem_req.valid  = 1'b1;
+                    mem_req.addr   = pt_addr + ({55'b0, vpn0} << 3);
+                    mem_req.size   = MSIZE8;
+                    mem_req.strobe = 8'b0;
+                    mem_req.data   = 64'b0;
+                end
+
+                REQ_P, WAIT_P: begin
+                    mem_req      = saved_req;
+                    mem_req.addr = paddr;
+                end
+
+                default: begin
+                    mem_req = '0;
+                end
+            endcase
+        end
+    end
 
     always_ff @(posedge clk) begin
-
-
-
-    
         if (reset) begin
             cur        <= IDLE;
-            cpu_resp_r <= '0;
-            saved_req  <= '0;
-
             kill_state <= KILL_NONE;
 
-            vpn2      <= 9'b0;
-            vpn1      <= 9'b0;
-            vpn0      <= 9'b0;
-            root_addr <= 64'b0;
-            pte       <= 64'b0;
-            paddr     <= 64'b0;
-            pt_addr   <= 64'b0;
+            saved_req  <= '0;
+            saved_resp <= '0;
+
+            vpn2       <= 9'b0;
+            vpn1       <= 9'b0;
+            vpn0       <= 9'b0;
+            root_addr  <= 64'b0;
+            pt_addr    <= 64'b0;
+            pte        <= 64'b0;
+            paddr      <= 64'b0;
         end
         else if (flush) begin
             cur        <= IDLE;
-            cpu_resp_r <= '0;
+            saved_req  <= '0;
+            saved_resp <= '0;
 
-            // 关键：
-            // flush 当拍 instr_mem 在 redirect 分支，不会吃 data_ok。
-            // 先给 arbiter addr_ok，下一拍再给 data_ok。
             kill_state <= cpu_req.valid ? KILL_ADDR : KILL_NONE;
 
-            saved_req <= '0;
-
-            vpn2      <= 9'b0;
-            vpn1      <= 9'b0;
-            vpn0      <= 9'b0;
-            root_addr <= 64'b0;
-            pte       <= 64'b0;
-            paddr     <= 64'b0;
-            pt_addr   <= 64'b0;
-
-
+            vpn2       <= 9'b0;
+            vpn1       <= 9'b0;
+            vpn0       <= 9'b0;
+            root_addr  <= 64'b0;
+            pt_addr    <= 64'b0;
+            pte        <= 64'b0;
+            paddr      <= 64'b0;
 
 `ifdef DEBUG
-            $display("[MMU FLUSH] drop cur=%0d saved_addr=%h cpu_valid=%b cpu_addr=%h priv=%0d satp=%h",
-                     cur, saved_req.addr, cpu_req.valid, cpu_req.addr, privil_mode, satp);
+            $display("[MMU_FLUSH] cur=%0d cpu_valid=%b cpu_addr=%h saved_addr=%h",
+                     cur, cpu_req.valid, cpu_req.addr, saved_req.addr);
 `endif
         end
         else begin
-            cpu_resp_r <= '0;
-
             if (kill_state == KILL_ADDR) begin
                 kill_state <= KILL_DATA;
-                cur <= IDLE;
+                cur        <= IDLE;
 
 `ifdef DEBUG
-                $display("[MMU KILL ADDR] addr_ok to arbiter, cpu_valid=%b cpu_addr=%h",
+                $display("[MMU_KILL_ADDR] cpu_valid=%b cpu_addr=%h",
                          cpu_req.valid, cpu_req.addr);
 `endif
             end
             else if (kill_state == KILL_DATA) begin
                 kill_state <= KILL_NONE;
-                cur <= IDLE;
+                cur        <= IDLE;
 
 `ifdef DEBUG
-                $display("[MMU KILL DATA] data_ok to arbiter/instr_mem, cpu_valid=%b cpu_addr=%h",
+                $display("[MMU_KILL_DATA] cpu_valid=%b cpu_addr=%h",
                          cpu_req.valid, cpu_req.addr);
 `endif
             end
             else begin
-
-`ifdef DEBUG
-                if (mem_resp.data_ok) begin
-                    if (cur == WAIT_2) begin
-                        $display("[MMU L2] vaddr=%h root=%h vpn2=%h pte_addr=%h pte=%h next_pt=%h",
-                                 saved_req.addr,
-                                 root_addr,
-                                 vpn2,
-                                 root_addr + ({55'b0, vpn2} << 3),
-                                 mem_resp.data,
-                                 {8'b0, mem_resp.data[53:10], 12'b0});
-                    end
-
-                    if (cur == WAIT_1) begin
-                        $display("[MMU L1] vaddr=%h pt_addr=%h vpn1=%h pte_addr=%h pte=%h next_pt=%h",
-                                 saved_req.addr,
-                                 pt_addr,
-                                 vpn1,
-                                 pt_addr + ({55'b0, vpn1} << 3),
-                                 mem_resp.data,
-                                 {8'b0, mem_resp.data[53:10], 12'b0});
-                    end
-
-                    if (cur == WAIT_0) begin
-                        $display("[MMU L0] vaddr=%h pt_addr=%h vpn0=%h pte_addr=%h pte=%h final_paddr=%h",
-                                 saved_req.addr,
-                                 pt_addr,
-                                 vpn0,
-                                 pt_addr + ({55'b0, vpn0} << 3),
-                                 mem_resp.data,
-                                 {8'b0, mem_resp.data[53:10], saved_req.addr[11:0]});
-                    end
-                end
-`endif
-
                 case (cur)
 
                     IDLE: begin
-                        if (cpu_req_eff.valid) begin
-                            saved_req <= cpu_req_eff;
+                        saved_resp <= '0;
 
-                            vpn2 <= cpu_req_eff.addr[38:30];
-                            vpn1 <= cpu_req_eff.addr[29:21];
-                            vpn0 <= cpu_req_eff.addr[20:12];
+                        if (cpu_req.valid) begin
+                            saved_req <= cpu_req;
 
+                            vpn2      <= cpu_req.addr[38:30];
+                            vpn1      <= cpu_req.addr[29:21];
+                            vpn0      <= cpu_req.addr[20:12];
                             root_addr <= {8'b0, satp[43:0], 12'b0};
 
                             if (translate) begin
                                 cur <= REQ_2;
                             end
                             else begin
-                                paddr <= cpu_req_eff.addr;
+                                paddr <= cpu_req.addr;
                                 cur   <= REQ_P;
                             end
+
+`ifdef DEBUG
+                            $display("[MMU_ACCEPT] cpu_addr=%h valid=%b strobe=%h data=%h translate=%b priv=%0d satp=%h",
+                                     cpu_req.addr, cpu_req.valid, cpu_req.strobe,
+                                     cpu_req.data, translate, privil_mode, satp);
+`endif
                         end
                     end
 
@@ -224,6 +207,12 @@ module mmu import common ::*;(
                             pte     <= mem_resp.data;
                             pt_addr <= {8'b0, mem_resp.data[53:10], 12'b0};
                             cur     <= REQ_1;
+
+`ifdef DEBUG
+                            $display("[MMU_L2_DONE] vaddr=%h pte=%h next_pt=%h",
+                                     saved_req.addr, mem_resp.data,
+                                     {8'b0, mem_resp.data[53:10], 12'b0});
+`endif
                         end
                     end
 
@@ -236,6 +225,12 @@ module mmu import common ::*;(
                             pte     <= mem_resp.data;
                             pt_addr <= {8'b0, mem_resp.data[53:10], 12'b0};
                             cur     <= REQ_0;
+
+`ifdef DEBUG
+                            $display("[MMU_L1_DONE] vaddr=%h pte=%h next_pt=%h",
+                                     saved_req.addr, mem_resp.data,
+                                     {8'b0, mem_resp.data[53:10], 12'b0});
+`endif
                         end
                     end
 
@@ -248,6 +243,12 @@ module mmu import common ::*;(
                             pte   <= mem_resp.data;
                             paddr <= {8'b0, mem_resp.data[53:10], saved_req.addr[11:0]};
                             cur   <= REQ_P;
+
+`ifdef DEBUG
+                            $display("[MMU_L0_DONE] vaddr=%h pte=%h final_paddr=%h",
+                                     saved_req.addr, mem_resp.data,
+                                     {8'b0, mem_resp.data[53:10], saved_req.addr[11:0]});
+`endif
                         end
                     end
 
@@ -257,9 +258,29 @@ module mmu import common ::*;(
 
                     WAIT_P: begin
                         if (mem_resp.data_ok) begin
-                            cpu_resp_r <= mem_resp;
-                            cur        <= IDLE;
+                            saved_resp <= mem_resp;
+                            cur        <= RESP;
+
+`ifdef DEBUG
+                            $display("[MMU_MEM_DONE] saved_vaddr=%h paddr=%h resp_data=%h",
+                                     saved_req.addr, paddr, mem_resp.data);
+`endif
                         end
+                    end
+
+                    RESP: begin
+`ifdef DEBUG
+                        if (cpu_req.valid) begin
+                            $display("[MMU_RESP_BLOCK_NEW_REQ] resp_for=%h resp_data=%h blocked_cpu_addr=%h",
+                                     saved_req.addr, saved_resp.data, cpu_req.addr);
+                        end
+
+                        $display("[MMU_CPU_RESP] saved_addr=%h data_ok=%b data=%h",
+                                 saved_req.addr, saved_resp.data_ok, saved_resp.data);
+`endif
+                        saved_req  <= '0;
+                        saved_resp <= '0;
+                        cur        <= IDLE;
                     end
 
                     default: begin
@@ -271,88 +292,25 @@ module mmu import common ::*;(
         end
     end
 
-    always_comb begin
-        mem_req = '0;
-
-        // flush 和 kill response 期间，绝对不能继续向内存发旧请求
-        if (flush || kill_state != KILL_NONE) begin
-            mem_req = '0;
-        end
-        else begin
-            case (cur)
-
-                REQ_2,WAIT_2: begin
-                    mem_req.valid  = 1'b1;
-                    mem_req.addr   = root_addr + ({55'b0, vpn2} << 3);
-                    mem_req.size   = MSIZE8;
-                    mem_req.strobe = 8'b0;
-                    mem_req.data   = 64'b0;
-                end
-
-                REQ_1,WAIT_1: begin
-                    mem_req.valid  = 1'b1;
-                    mem_req.addr   = pt_addr + ({55'b0, vpn1} << 3);
-                    mem_req.size   = MSIZE8;
-                    mem_req.strobe = 8'b0;
-                    mem_req.data   = 64'b0;
-                end
-
-                REQ_0,WAIT_0: begin
-                    mem_req.valid  = 1'b1;
-                    mem_req.addr   = pt_addr + ({55'b0, vpn0} << 3);
-                    mem_req.size   = MSIZE8;
-                    mem_req.strobe = 8'b0;
-                    mem_req.data   = 64'b0;
-                end
-
-                REQ_P,WAIT_P: begin
-                    mem_req      = saved_req;
-                    mem_req.addr = paddr;
-                end
-
-                default: begin
-                    mem_req = '0;
-                end
-
-            endcase
-        end
-    end
-
-
 `ifdef DEBUG
-always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (mem_req.valid || mem_resp.addr_ok || mem_resp.data_ok) begin
-            $display("[MMU_REQ] cur=%0d cpu_valid=%b cpu_addr=%h saved_valid=%b saved_addr=%h saved_strobe=%h | mem_valid=%b mem_addr=%h mem_strobe=%h mem_data=%h | addr_ok=%b data_ok=%b",
-                     cur,
-                     cpu_req_eff.valid, cpu_req_eff.addr,
-                     saved_req.valid, saved_req.addr, saved_req.strobe,
-                     mem_req.valid, mem_req.addr, mem_req.strobe, mem_req.data,
-                     mem_resp.addr_ok, mem_resp.data_ok);
-        end
+    always_ff @(posedge clk) begin
+        if (!reset) begin
+            if (cpu_req.valid || mem_req.valid || mem_resp.data_ok || cpu_resp.data_ok) begin
+                $display("[MMU_STATE] cur=%0d kill=%0d cpu_valid=%b cpu_addr=%h saved_addr=%h paddr=%h mem_valid=%b mem_addr=%h mem_strobe=%h mem_data=%h mem_data_ok=%b mem_data_resp=%h cpu_data_ok=%b cpu_data=%h",
+                         cur, kill_state,
+                         cpu_req.valid, cpu_req.addr,
+                         saved_req.addr, paddr,
+                         mem_req.valid, mem_req.addr, mem_req.strobe, mem_req.data,
+                         mem_resp.data_ok, mem_resp.data,
+                         cpu_resp.data_ok, cpu_resp.data);
+            end
 
-        if ((cur == WAIT_2 || cur == WAIT_1 || cur == WAIT_0 || cur == WAIT_P) && mem_req.valid) begin
-            $display("[MMU_WAIT_STILL_REQUESTING] cur=%0d mem_addr=%h strobe=%h data=%h addr_ok=%b data_ok=%b",
-                     cur, mem_req.addr, mem_req.strobe, mem_req.data,
-                     mem_resp.addr_ok, mem_resp.data_ok);
-        end
-    end
-end
-`endif
-
-`ifdef DEBUG
-always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (cpu_resp.addr_ok || cpu_resp.data_ok || mem_resp.addr_ok || mem_resp.data_ok) begin
-            $display("[MMU_RESP] cur=%0d saved_addr=%h mem_addr=%h mem_addr_ok=%b mem_data_ok=%b mem_data=%h | cpu_addr_ok=%b cpu_data_ok=%b cpu_data=%h",
-                     cur, saved_req.addr, mem_req.addr,
-                     mem_resp.addr_ok, mem_resp.data_ok, mem_resp.data,
-                     cpu_resp.addr_ok, cpu_resp.data_ok, cpu_resp.data);
+            if (cur == IDLE && cpu_resp.data_ok && cpu_req.valid) begin
+                $display("[MMU_ERROR_IDLE_RESP_AND_ACCEPT] cpu_addr=%h cpu_resp_data=%h",
+                         cpu_req.addr, cpu_resp.data);
+            end
         end
     end
-end
 `endif
-
-
 
 endmodule
