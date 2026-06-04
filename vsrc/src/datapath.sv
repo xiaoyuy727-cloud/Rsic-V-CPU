@@ -37,6 +37,10 @@ module datapath import common::*;(
     input  logic        reset,
     input  logic [63:0] PCINIT,
 
+    input logic         trint,
+    input logic         swint,
+    input logic         exint,
+
     input  ibus_resp_t  ibus_resp,
     output ibus_req_t   ibus_req,
 
@@ -125,6 +129,25 @@ always_ff @(posedge clk) begin
     end
 end
 `endif
+    // exception & interruption
+    logic iaddr_exc_f;
+    logic iaddr_exc_d;
+    logic iaddr_exc_e;
+    logic iaddr_exc_m;
+    logic iaddr_exc_w;
+
+    logic daddr_exc_f;
+    logic daddr_exc_d;
+    logic daddr_exc_e;
+    logic daddr_exc_m;
+    logic daddr_exc_w;
+
+    logic instr_exc_f;
+    logic instr_exc_d;
+    logic instr_exc_e;
+    logic instr_exc_m;
+    logic instr_exc_w;
+
 
 
 
@@ -270,11 +293,11 @@ csr_file cf(
 
     // M 阶段写 CSR
     // 写在 M 阶段，是为了到 W 阶段 difftest commit 时 CSR 状态已经更新
-    .instr_w(instr_m),
+    .instr_w(instr_w),
 
-    .new_csr_num    (csr_num_m),
-    .new_csr_value  (csr_operand_m),
-    .csrwrite       (csrwrite_m & valid_m),
+    .new_csr_num    (csr_num_w),
+    .new_csr_value  (csr_operand_w),
+    .csrwrite       (csrwrite_w & valid_w),
 
     .csr_value      (csr_value_d),
     .csr_num        (csr_num_d),
@@ -362,6 +385,7 @@ csr_file cf(
         .is_ecall       (is_ecall_w & valid_w),
         .is_mret        (is_mret_w & valid_w),
 
+        .iaddr_exc      (iaddr_exc_f),
         .fetch_ok       (fetch_ok),
         .instr          (instr_f),
         .ibus_req       (real_ibus_req),
@@ -381,7 +405,9 @@ csr_file cf(
         .flush       (if_id_flush),
         .instr_d     (instr_d),
         .valid_d     (valid_d),
-        .pc_d        (pc_d)
+        .pc_d        (pc_d),
+        .iaddr_exc_f (iaddr_exc_f),
+        .iaddr_exc_d (iaddr_exc_d)
     );
 
     // =========================================================

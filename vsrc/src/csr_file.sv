@@ -138,43 +138,6 @@ module csr_file import common::*;import csr_pkg::*;(
         end else begin
             csr_mcycle <= csr_mcycle + 64'd1;
 
-
-`ifdef DEBUG
-if (csrwrite) begin
-    $display("[CSR WRITE] pc=%h instr=%h csr=%h old=%h new_csr_value=%h write_value=%h funct3=%b",
-             pc_w, instr_w, new_csr_num, old_value, new_csr_value, write_value, instr_w[14:12]);
-end
-
-if (csrwrite && new_csr_num == CSR_SATP) begin
-    $display("[CSR SATP WRITE] pc=%h instr=%h old_satp=%h new_csr_value=%h write_value=%h satp_ppn=%h root_addr=%h",
-             pc_w, instr_w, csr_satp, new_csr_value, write_value,
-             write_value[43:0],
-             {8'b0, write_value[43:0], 12'b0});
-end
-
-if (csrwrite && new_csr_num == CSR_MSTATUS) begin
-    $display("[CSR MSTATUS WRITE] pc=%h instr=%h old_mstatus=%h new_csr_value=%h write_value=%h masked=%h",
-             pc_w, instr_w, csr_mstatus, new_csr_value, write_value, write_value & MSTATUS_MASK);
-end
-
-if (is_mret) begin
-    $display("[CSR MRET] pc=%h instr=%h before_mstatus=%h before_satp=%h before_mepc=%h",
-             pc_w, instr_w, csr_mstatus, csr_satp, csr_mepc);
-end
-
-if (is_ecall) begin
-    $display("[CSR ECALL] pc=%h instr=%h priv=%0d before_mstatus=%h before_mepc=%h",
-             pc_w, instr_w, privil_mode, csr_mstatus, csr_mepc);
-end
-`endif
-
-
-
-
-
-
-
-
             if (csrwrite) begin
                 unique case (new_csr_num)
                     CSR_MSTATUS:  csr_mstatus  <= write_value & MSTATUS_MASK;

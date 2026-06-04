@@ -141,7 +141,11 @@ module core import common::*;(
 		.csr_mhartid (csr_mhartid),
 		.csr_satp	 (csr_satp),
 
-		.privil_mode   (privil_mode)
+		.privil_mode   (privil_mode),
+
+		.swint			(swint),
+		.trint			(trint),
+		.exint			(exint),
 	);
 
 `ifdef VERILATOR

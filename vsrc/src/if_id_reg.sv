@@ -22,7 +22,9 @@ module if_id_reg (
     input  logic        reset,
     input  logic        if_id_stall,
     input  logic        flush,
-    
+    input  logic        iaddr_exc_f,
+
+    output logic        iaddr_exc_d,
 
     output logic [31:0] instr_d,
     output logic        valid_d,
@@ -34,22 +36,26 @@ module if_id_reg (
             instr_d <= 32'b0;
             valid_d <= 1'b0;
             pc_d    <= 64'b0;
+            iaddr_exc_d <= 1'b0;
         end
         else if (flush) begin
             instr_d <= 32'b0;
             valid_d <= 1'b0;
             pc_d    <= 64'b0;
+            iaddr_exc_d <= 1'b0;
         end
         else if (!if_id_stall) begin
             if (fetch_ok) begin
                 instr_d <= instr_f;
                 pc_d    <= pc_f;
                 valid_d <= 1'b1;
+                iaddr_exc_d <= iaddr_exc_f;
             end
             else begin
                 instr_d <= 32'b0;
                 pc_d    <= 64'b0;
                 valid_d <= 1'b0;
+                iaddr_exc_d <= 1'b0;
             end
         end
     end
