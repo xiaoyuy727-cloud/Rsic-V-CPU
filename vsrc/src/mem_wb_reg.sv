@@ -28,6 +28,15 @@
 //     output logic [4:0] rd_w
 //     output logic regwrite_w
 //     output logic valid_w
+
+//      input logic iaddr_exc_m
+//      output logic iaddr_exc_w
+//      input logic redirect_valid_m
+//      output logic redirect_valid_w
+//      input logic [63:0]redirect_pc_m
+//      output logic [63:0]redirect_pc_w
+//    input logic     daddr_exc_m
+//    output logic    daddr_exc_w
 //功能：流水寄存器，reset清零。每一拍，当stall为0，将输入的“m”类量写入对应的“w”类量.
 
 module mem_wb_reg (
@@ -65,7 +74,16 @@ module mem_wb_reg (
     output logic [63:0] aluout_w,
     output logic [4:0]  rd_w,
     output logic        regwrite_w,
-    output logic        valid_w
+    output logic        valid_w,
+    input logic iaddr_exc_m,
+    output logic iaddr_exc_w,
+    input logic redirect_valid_m,
+    output logic redirect_valid_w,
+    input logic [63:0]redirect_pc_m,
+    output logic [63:0]redirect_pc_w,
+
+    input logic     daddr_exc_m,
+    output logic    daddr_exc_w
 );
 
     always_ff @(posedge clk) begin
@@ -84,6 +102,10 @@ module mem_wb_reg (
             csrwrite_w       <=1'b0;
             is_ecall_w       <= 1'b0;
             is_mret_w        <= 1'b0;
+            iaddr_exc_w      <= 1'b0;
+            redirect_pc_w    <= 64'd0;
+            redirect_valid_w <= 1'b0;
+            daddr_exc_w      <= 1'b0;
         end
         else if (!mem_wb_stall) begin
             csr_num_w     <= csr_num_m;
@@ -100,6 +122,10 @@ module mem_wb_reg (
             csrwrite_w       <= csrwrite_m;
             is_ecall_w       <= is_ecall_m;
             is_mret_w        <= is_mret_m;
+            iaddr_exc_w      <= iaddr_exc_m;
+            redirect_pc_w    <= redirect_pc_m;
+            redirect_valid_w <= redirect_valid_m;
+            daddr_exc_w      <= daddr_exc_m;
         end
     end
 

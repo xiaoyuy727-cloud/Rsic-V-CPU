@@ -129,6 +129,9 @@ always_ff @(posedge clk) begin
     end
 end
 `endif
+
+
+
     // exception & interruption
     logic iaddr_exc_f;
     logic iaddr_exc_d;
@@ -136,17 +139,20 @@ end
     logic iaddr_exc_m;
     logic iaddr_exc_w;
 
-    logic daddr_exc_f;
-    logic daddr_exc_d;
-    logic daddr_exc_e;
+
     logic daddr_exc_m;
     logic daddr_exc_w;
 
-    logic instr_exc_f;
+
     logic instr_exc_d;
     logic instr_exc_e;
     logic instr_exc_m;
     logic instr_exc_w;
+
+    data_valid_unit DVU(
+        .address     (aluout_m),
+        .daddr_exc_m (daddr_exc_m)
+    );
 
 
 
@@ -218,15 +224,20 @@ end
     logic ex_mem_flush;
     logic mem_wb_flush;
 
-    logic        redirect_valid;
-    logic [63:0] redirect_pc;
+    logic        redirect_valid_e;
+    logic        redirect_valid_m;
+    logic        redirect_valid_w;
+
+    logic [63:0] redirect_pc_e;
+    logic [63:0] redirect_pc_m;
+    logic [63:0] redirect_pc_w;
 
     saf_unit st(
         .is_ecall       (is_ecall_w),
         .is_mret        (is_mret_w),
         .load_use_stall (load_use_stall),
         .mem_stall      (mem_stall),
-        .redirect_valid (redirect_valid),
+        .redirect_valid (redirect_valid_w),
         .pc_stall       (pc_stall),
         .if_id_stall    (if_id_stall),
         .id_ex_stall    (id_ex_stall),
@@ -235,7 +246,14 @@ end
         .if_id_flush    (if_id_flush),
         .id_ex_flush    (id_ex_flush),
         .ex_mem_flush   (ex_mem_flush),
-        .mem_wb_flush   (mem_wb_flush)  //暂时写成0.避免mret、iecall把自己flush掉。
+        .mem_wb_flush   (mem_wb_flush),  //暂时写成0.避免mret、iecall把自己flush掉。
+
+        .swint          (swint),
+        .trint          (trint),
+        .exint          (exint),
+
+        .daddr_exc_w    (daddr_exc_w),
+        .iaddr_exc_w    (iaddr_exc_w)
     );
 
     // =========================================================
@@ -318,6 +336,13 @@ csr_file cf(
     .csr_mhartid    (csr_mhartid),
     .csr_satp       (csr_satp),
     .csr_mstatus    (csr_mstatus)
+
+    .swint          (swint),
+    .trint          (trint),
+    .exint          (exint),
+
+    .daddr_exc_w    (daddr_exc_w),
+    .iaddr_exc_w    (iaddr_exc_w)
 );
 
     // =========================================================
@@ -381,7 +406,7 @@ csr_file cf(
         .ibus_resp      (real_ibus_resp),
         .pcinit         (PCINIT),
         .redirect_pc    (final_redirect_pc),
-        .branch_redirect_valid (redirect_valid),
+        .branch_redirect_valid (redirect_valid_e),
         .is_ecall       (is_ecall_w & valid_w),
         .is_mret        (is_mret_w & valid_w),
 
@@ -624,7 +649,10 @@ csr_file cf(
         .mem_read_e    (mem_read_e),
         .mem_sign_e    (mem_sign_e),
         .mem_digit_e   (mem_digit_e),
-        .regwrite_e    (regwrite_e)
+        .regwrite_e    (regwrite_e),
+
+        .iaddr_exc_d   (iaddr_exc_d),
+        .iaddr_exc_e   (iaddr_exc_e),
     );
 
     // =========================================================
@@ -721,24 +749,31 @@ end
     redirect_valid_unit EXRV(
         .cmp_res        (cmp_res),
         .is_baj_e       (is_baj_e),
-        .redirect_valid (redirect_valid)
+        .redirect_valid (redirect_valid_e)
     );
 
     redirect_pc_unit EXRP(
         .alu_res     (aluout_e),
         .is_baj_e    (is_baj_e),
-        .redirect_pc (redirect_pc)
+        .redirect_pc (redirect_pc_e)
     );
 
     logic [63:0] final_redirect_pc;
 
     final_redirect_pc_unit frp(
-        .branch_redirect_pc  (redirect_pc),
+        .branch_redirect_pc  (redirect_pc_w),
         .final_redirect_pc   (final_redirect_pc),
         .csr_mepc            (csr_mepc),
         .csr_mtvec           (csr_mtvec),
         .is_ecall            (is_ecall_w & valid_w),
-        .is_mret             (is_mret_w & valid_w)
+        .is_mret             (is_mret_w & valid_w),
+
+        .swint          (swint),
+        .trint          (trint),
+        .exint          (exint),
+
+        .daddr_exc_w    (daddr_exc_w),
+        .iaddr_exc_w    (iaddr_exc_w)
     );
 
     // =========================================================
@@ -786,6 +821,13 @@ end
         .is_ecall_e (is_ecall_e),
         .is_mret_e  (is_mret_e),
 
+        .iaddr_exc_m   (iaddr_exc_m),
+        .iaddr_exc_e   (iaddr_exc_e),
+        .redirect_pc_m (redirect_pc_m),
+        .redirect_pc_e (redirect_pc_e),
+        .redirect_valid_m (redirect_valid_m),
+        .redirect_valid_e (redirect_valid_e),
+
         .csrwrite_m  (csrwrite_m),
         .wb_result_m        (wb_result_m),
         .valid_m            (valid_m),
@@ -823,7 +865,9 @@ end
         .dreq           (real_dbus_req),
 
         .mem_read_data  (mem_read_data_m),
-        .mem_stall      (mem_stall)
+        .mem_stall      (mem_stall),
+
+        .daddr_exc_m    (daddr_exc_m)
     );
     // =========================================================
     // MEM/WB
@@ -866,7 +910,16 @@ end
         .aluout_w         (aluout_w),
         .rd_w             (rd_w),
         .regwrite_w       (regwrite_w),
-        .valid_w          (valid_w)
+        .valid_w          (valid_w),
+
+        .iaddr_exc_m   (iaddr_exc_m),
+        .iaddr_exc_w   (iaddr_exc_w),
+        .redirect_pc_m (redirect_pc_m),
+        .redirect_pc_w (redirect_pc_w),
+        .redirect_valid_m (redirect_valid_m),
+        .redirect_valid_w (redirect_valid_w),
+        .daddr_exc_w    (daddr_exc_w),
+        .daddr_exc_m    (daddr_exc_m)
     );
 
     // =========================================================

@@ -20,6 +20,14 @@ module saf_unit (
     input  logic is_ecall,
     input  logic is_mret,
 
+    input logic swint,
+    input logic trint,
+    input logic exint,
+
+    input logic iaddr_exc_w,
+    input logic daddr_exc_w,
+
+
     output logic pc_stall,
     output logic if_id_stall,
     output logic id_ex_stall,
@@ -30,6 +38,9 @@ module saf_unit (
     output logic ex_mem_flush,
     output logic mem_wb_flush
 );
+    logic interrupt,exception;
+    assign interrupt = swint | trint | exint;
+    assign exception = is_ecall | iaddr_exc_w | daddr_exc_w;
 
     always_comb begin
         pc_stall     = mem_stall | load_use_stall;
@@ -39,10 +50,12 @@ module saf_unit (
         ex_mem_stall = mem_stall;
         mem_wb_stall = mem_stall;
 
-        if_id_flush  = redirect_valid | is_ecall | is_mret;
-        id_ex_flush  = redirect_valid | load_use_stall | is_ecall | is_mret;
-        ex_mem_flush  = is_ecall | is_mret;
-        mem_wb_flush  =  is_ecall | is_mret;
+        if_id_flush  = redirect_valid | interruption | exception | is_mret ;
+        id_ex_flush  = redirect_valid | load_use_stall | interruption | exception | is_mret;
+        ex_mem_flush  = interruption | exception | is_mret;
+        mem_wb_flush  = interruption | exception | is_mret;
+
+
 
     end
 

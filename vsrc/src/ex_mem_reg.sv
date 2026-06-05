@@ -35,6 +35,12 @@
 //     output logic [4:0] rd_m
 //     output logic regwrite_m
 //     output logic [63:0] rs2_val_m
+//     input logic iaddr_exc_e
+//     output logic iaddr_exc_m
+//     input logic redirect_valid_e
+//     output logic redirect_valid_m
+//     input logic [63:0]redirect_pc_e
+//     output logic [63:0] redirect_pc_m
 //功能：流水寄存器，reset清零。每一拍,当stall为0时，将输入的“e”类量写入对应的“m”类量
 
 module ex_mem_reg (
@@ -65,6 +71,13 @@ module ex_mem_reg (
     input logic is_mret_e,
     output logic is_mret_m,
     output logic is_ecall_m,
+
+    input logic iaddr_exc_e,
+    output logic iaddr_exc_m,
+    input logic redirect_valid_e,
+    output logic redirect_valid_m,
+    input logic [63:0]redirect_pc_e,
+    output logic [63:0] redirect_pc_m,
 
     output logic [11:0]      csr_num_m,
     output logic [63:0]      csr_value_m,
@@ -107,6 +120,9 @@ module ex_mem_reg (
             csrwrite_m         <= 1'b0;
             is_ecall_m         <= 1'b0;
             is_mret_m         <= 1'b0;
+            iaddr_exc_m        <= 1;b0;
+            redirect_pc_m       <= 64'd0;
+            redirect_valid_m    <= 1'b0;
         end
         else if (!ex_mem_stall) begin
 
@@ -129,6 +145,9 @@ module ex_mem_reg (
             csrwrite_m         <= csrwrite_e;
             is_ecall_m         <= is_ecall_e;
             is_mret_m          <= is_mret_e;
+            iaddr_exc_m        <= iaddr_exc_e;
+            redirect_pc_m       <= redirect_pc_e;
+            redirect_valid_m    <= redirect_valid_e;
         end
     end
 

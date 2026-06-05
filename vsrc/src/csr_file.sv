@@ -39,6 +39,14 @@ module csr_file import common::*;import csr_pkg::*;(
     input logic is_ecall,
     input logic is_mret,
     input logic [1:0]privil_mode,
+
+    input logic swint,
+    input logic trint,
+    input logic exint,
+
+    input logic iaddr_exc_w,
+    input logic daddr_exc_w,
+
     output logic [63:0] csr_value,
     output logic [11:0] csr_num,
     
@@ -158,6 +166,41 @@ module csr_file import common::*;import csr_pkg::*;(
                 csr_mstatus[3]<=csr_mstatus[7];
                 csr_mstatus[7]<=1;
             end else if (is_ecall) begin
+                csr_mstatus[12:11]<=privil_mode;
+                csr_mstatus[7]<=csr_mstatus[3];
+                csr_mstatus[3]<=0;
+                csr_mepc<=pc_w;
+                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
+            end else if (swint) begin
+                // to do
+                csr_mstatus[12:11]<=privil_mode;
+                csr_mstatus[7]<=csr_mstatus[3];
+                csr_mstatus[3]<=0;
+                csr_mepc<=pc_w;
+                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
+            end else if (exint) begin
+                // to do
+                csr_mstatus[12:11]<=privil_mode;
+                csr_mstatus[7]<=csr_mstatus[3];
+                csr_mstatus[3]<=0;
+                csr_mepc<=pc_w;
+                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
+            end else if (trint) begin
+                // to do 
+                csr_mstatus[12:11]<=privil_mode;
+                csr_mstatus[7]<=csr_mstatus[3];
+                csr_mstatus[3]<=0;
+                csr_mepc<=pc_w;
+                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
+            end else if (daddr_exc_w) begin
+                // to do
+                csr_mstatus[12:11]<=privil_mode;
+                csr_mstatus[7]<=csr_mstatus[3];
+                csr_mstatus[3]<=0;
+                csr_mepc<=pc_w;
+                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
+            end else if (iaddr_exc_w) begin
+                // to do 
                 csr_mstatus[12:11]<=privil_mode;
                 csr_mstatus[7]<=csr_mstatus[3];
                 csr_mstatus[3]<=0;

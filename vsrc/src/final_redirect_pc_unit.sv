@@ -15,12 +15,25 @@ module final_redirect_pc_unit(
     input logic [63:0] csr_mtvec,
     input logic is_ecall,
     input logic is_mret,
-    output logic [63:0] final_redirect_pc   
+    output logic [63:0] final_redirect_pc 
+
+    input logic swint,
+    input logic trint,
+    input logic exint,
+
+    input logic iaddr_exc_w,
+    input logic daddr_exc_w
+  
 );
+
+    logic interrupt,exception;
+    assign interrupt = swint | trint | exint;
+    assign exception = is_ecall | iaddr_exc_w | daddr_exc_w;
 
     always_comb begin
 
-            if(is_ecall)begin
+            if(interruption | exception)begin
+                // to do
                 final_redirect_pc = csr_mtvec;
             end else if (is_mret) begin
                 final_redirect_pc = csr_mepc;

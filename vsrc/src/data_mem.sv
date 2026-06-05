@@ -38,6 +38,7 @@ module data_mem (
     input  logic        mem_read_m,
     input  logic [1:0]  mem_digit_m,    // 0:8bit, 1:16bit, 2:32bit, 3:64bit
     input  logic        mem_sign_m,     // 1:零扩展, 0:符号扩展
+    input  logic        daddr_exc_m,
 
     input  dbus_resp_t  dresp,
     output dbus_req_t   dreq,
@@ -68,7 +69,7 @@ end
     logic        mem_req_valid;
 
     assign offset       = address[2:0];
-    assign mem_req_valid = valid_m & (mem_read_m | mem_write_m);
+    assign mem_req_valid = valid_m & (mem_read_m | mem_write_m | (~daddr_exc_m));
 
     // 只有当前 M 级是有效访存指令，且 data_ok 还没到时，才 stall
     assign mem_stall = mem_req_valid & (~dresp.data_ok);

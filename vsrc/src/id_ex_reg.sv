@@ -50,6 +50,8 @@
 //     output logic regwrite_e
 //     input logic csrwrite_d
 //     output logic csrwrite_e
+//     input logic iaddr_exc_d
+//     output logic iaddr_exc_e
 //功能：流水寄存器，
 //     reset时全部归零。
 //     flush时全部归零。
@@ -90,6 +92,9 @@ module id_ex_reg (
     input logic is_mret_d,
     output logic is_mret_e,
     output logic is_ecall_e,
+
+    input logic iaddr_exc_d,
+    output logic iaddr_exc_e,
 
     output logic [11:0]      csr_num_e,
     output logic [63:0]      csr_value_e,
@@ -144,6 +149,7 @@ always_ff @(posedge clk) begin
         csrwrite_e    <= 1'b0;
         is_ecall_e    <= 1'b0;
         is_mret_e    <= 1'b0;
+        iaddr_exc_e   <= 1'b0;
     end
     else if (flush) begin
         csr_operand_e <= 64'b0;
@@ -172,6 +178,7 @@ always_ff @(posedge clk) begin
         csrwrite_e    <= 1'b0;
         is_ecall_e    <= 1'b0;
         is_mret_e    <= 1'b0;
+        iaddr_exc_e   <= 1'b0;
     end
     else if (!id_ex_stall) begin
         csr_operand_e <= csr_operand_d;
@@ -200,6 +207,7 @@ always_ff @(posedge clk) begin
         csrwrite_e    <=csrwrite_d;
         is_mret_e     <= is_mret_d;
         is_ecall_e    <= is_ecall_d;
+        iaddr_exc_e   <= iaddr_exc_d;
     end
 end
 
