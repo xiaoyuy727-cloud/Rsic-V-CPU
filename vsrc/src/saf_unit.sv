@@ -50,10 +50,10 @@ module saf_unit (
         ex_mem_stall = mem_stall;
         mem_wb_stall = mem_stall;
 
-        if_id_flush  = redirect_valid | interruption | exception | is_mret ;
-        id_ex_flush  = redirect_valid | load_use_stall | interruption | exception | is_mret;
-        ex_mem_flush  = interruption | exception | is_mret;
-        mem_wb_flush  = interruption | exception | is_mret;
+        if_id_flush  = redirect_valid | interrupt | exception | is_mret ;
+        id_ex_flush  = redirect_valid | load_use_stall | interrupt | exception | is_mret;
+        ex_mem_flush  = interrupt | exception | is_mret;
+        mem_wb_flush  = interrupt | exception | is_mret;
 
 
 

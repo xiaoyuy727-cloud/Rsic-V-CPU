@@ -30,6 +30,47 @@ module if_id_reg (
     output logic        valid_d,
     output logic [63:0] pc_d
 );
+`ifdef VERILATOR
+longint dbg_cycle;
+always_ff @(posedge clk) begin
+    if (reset) begin
+        dbg_cycle <= 0;
+    end else begin
+        dbg_cycle <= dbg_cycle + 1;
+    
+        if ((dbg_cycle >= 1288) && (dbg_cycle <= 1320)) begin
+
+        if (if_id_stall && fetch_ok) begin
+            $display(
+                "[IFID_HOLD_WITH_FETCH_OK] fetch_ok=%b stall=%b pc_f=%h instr_f=%h pc_d=%h instr_d=%h valid_d=%b",
+                fetch_ok,
+                if_id_stall,
+                pc_f,
+                instr_f,
+                pc_d,
+                instr_d,
+                valid_d
+            );
+        end
+
+        if (!if_id_stall && fetch_ok) begin
+            $display(
+                "[IFID_ACCEPT] pc_f=%h instr_f=%h old_pc_d=%h old_instr_d=%h old_valid_d=%b",
+                pc_f,
+                instr_f,
+                pc_d,
+                instr_d,
+                valid_d
+            );
+        end
+
+        end
+    end
+end
+`endif
+
+
+
 
     always_ff @(posedge clk) begin
         if (reset) begin

@@ -49,14 +49,17 @@ module data_mem (
 
 
 
-`ifdef DEBUG
+`ifdef VERILATOR
+longint dbg_cycle;
 always_ff @(posedge clk) begin
-    if (!rst) begin
-        if (dreq.valid && |dreq.strobe) begin
-            $display("[DMEM_REQ] valid=%b addr=%h strobe=%h data=%h addr_ok=%b data_ok=%b mem_stall=%b",
-                     dreq.valid, dreq.addr, dreq.strobe, dreq.data,
-                     dresp.addr_ok, dresp.data_ok, mem_stall);
-        end
+    if (rst) begin
+        dbg_cycle <= 0;
+    end else begin
+        dbg_cycle <= dbg_cycle + 1;
+
+
+
+
     end
 end
 `endif
@@ -69,7 +72,7 @@ end
     logic        mem_req_valid;
 
     assign offset       = address[2:0];
-    assign mem_req_valid = valid_m & (mem_read_m | mem_write_m | (~daddr_exc_m));
+    assign mem_req_valid = valid_m & (mem_read_m | mem_write_m ) & (~daddr_exc_m);
 
     // 只有当前 M 级是有效访存指令，且 data_ok 还没到时，才 stall
     assign mem_stall = mem_req_valid & (~dresp.data_ok);

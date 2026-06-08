@@ -120,7 +120,7 @@ module ex_mem_reg (
             csrwrite_m         <= 1'b0;
             is_ecall_m         <= 1'b0;
             is_mret_m         <= 1'b0;
-            iaddr_exc_m        <= 1;b0;
+            iaddr_exc_m        <= 1'b0;
             redirect_pc_m       <= 64'd0;
             redirect_valid_m    <= 1'b0;
         end

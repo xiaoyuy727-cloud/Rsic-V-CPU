@@ -2,6 +2,7 @@
 `include "include/common.sv"
 `include "include/csr.sv"
 `include "src/alu_adder.sv"
+`include "src/data_valid_unit.sv"
 `include "src/alu.sv"
 `include "src/alures_mux.sv"
 `include "src/load_use_hazard.sv"
@@ -107,6 +108,75 @@ module datapath import common::*;(
 
 
 
+
+
+`ifdef VERILATOR
+logic [63:0] dbg_cnt;
+logic [31:0] no_commit_cnt;
+logic        hang_reported;
+
+logic [63:0] last_commit_pc;
+logic [31:0] last_commit_instr;
+logic [63:0] last_commit_cycle;
+
+always_ff @(posedge clk) begin
+    if (reset) begin
+        dbg_cnt           <= 64'd0;
+        no_commit_cnt     <= 32'd0;
+        hang_reported     <= 1'b0;
+        last_commit_pc    <= 64'd0;
+        last_commit_instr <= 32'd0;
+        last_commit_cycle <= 64'd0;
+    end else begin
+        dbg_cnt <= dbg_cnt + 64'd1;
+
+
+
+        if (commit_valid) begin
+            no_commit_cnt     <= 32'd0;
+            hang_reported     <= 1'b0;
+            last_commit_pc    <= commit_pc;
+            last_commit_instr <= commit_instr;
+            last_commit_cycle <= dbg_cnt;
+
+            $display("[COMMIT_TRACE] cycle=%0d pc=%h instr=%h wen=%b rd=%0d wdata=%h",
+                     dbg_cnt, commit_pc, commit_instr,
+                     commit_wen, commit_wdest, commit_wdata);
+        end else begin
+            no_commit_cnt <= no_commit_cnt + 32'd1;
+
+            if ((no_commit_cnt == 32'd100) && !hang_reported) begin
+                hang_reported <= 1'b1;
+
+                $display("\n================ HANG DETECTED ================");
+                $display("[LAST_COMMIT] cycle=%0d pc=%h instr=%h",
+                         last_commit_cycle, last_commit_pc, last_commit_instr);
+
+                $display("[PIPE] F:%h %h v=%b | D:%h %h v=%b | E:%h %h v=%b | M:%h %h v=%b | W:%h %h v=%b",
+                         pc_f, instr_f, instr_valid_f,
+                         pc_d, instr_d, valid_d,
+                         pc_e, instr_e, valid_e,
+                         pc_m, instr_m, valid_m,
+                         pc_w, instr_w, valid_w);
+
+                $display("[STALL] pc=%b ifid=%b idex=%b exmem=%b memwb=%b mem=%b",
+                         pc_stall,
+                         if_id_stall,
+                         id_ex_stall,
+                         ex_mem_stall,
+                         mem_wb_stall,
+                         mem_stall);
+
+                $display("[IF_VISIBLE] pc_f=%h instr_f=%h instr_valid_f=%b fetch_consume=%b",
+                         pc_f, instr_f, instr_valid_f, fetch_consume);
+
+                $display("===============================================\n");
+            end
+        end
+    end
+end
+`endif
+
 `ifdef DEBUG
 always_ff @(posedge clk) begin
     if ((is_mret_w && valid_w) || (is_ecall_w && valid_w)) begin
@@ -151,7 +221,10 @@ end
 
     data_valid_unit DVU(
         .address     (aluout_m),
-        .daddr_exc_m (daddr_exc_m)
+        .daddr_exc_m (daddr_exc_m),
+        .mem_write_m (mem_write_m),
+        .mem_read_m  (mem_read_m),
+        .mem_digit_m (mem_digit_m)
     );
 
 
@@ -335,7 +408,7 @@ csr_file cf(
     .csr_mcycle     (csr_mcycle),
     .csr_mhartid    (csr_mhartid),
     .csr_satp       (csr_satp),
-    .csr_mstatus    (csr_mstatus)
+    .csr_mstatus    (csr_mstatus),
 
     .swint          (swint),
     .trint          (trint),
@@ -376,8 +449,9 @@ csr_file cf(
     // =========================================================
     // 1. IF
     // =========================================================
-    logic        fetch_ok;
+
     logic        fetch_consume;
+    logic instr_valid_f;
 
     logic [31:0] instr_f;
     logic [31:0] instr_d;
@@ -396,25 +470,27 @@ csr_file cf(
     logic valid_m;
     logic valid_w;
 
-    assign fetch_consume = fetch_ok & ~if_id_stall;
+    assign fetch_consume = instr_valid_f & ~if_id_stall;
 
     instr_mem if3(
         .clk            (clk),
         .reset          (reset),
         .consume        (fetch_consume),
+
         .pc_stall       (pc_stall),
         .ibus_resp      (real_ibus_resp),
         .pcinit         (PCINIT),
         .redirect_pc    (final_redirect_pc),
         .branch_redirect_valid (redirect_valid_e),
+        
         .is_ecall       (is_ecall_w & valid_w),
         .is_mret        (is_mret_w & valid_w),
 
         .iaddr_exc      (iaddr_exc_f),
-        .fetch_ok       (fetch_ok),
         .instr          (instr_f),
         .ibus_req       (real_ibus_req),
-        .instr_pc       (pc_f)
+        .pc             (pc_f),
+        .instr_valid    (instr_valid_f)
     );
 
     // =========================================================
@@ -423,7 +499,7 @@ csr_file cf(
     if_id_reg if_id(
         .instr_f     (instr_f),
         .clk         (clk),
-        .fetch_ok    (fetch_ok),
+        .fetch_ok    (instr_valid_f),
         .pc_f        (pc_f),
         .reset       (reset),
         .if_id_stall (if_id_stall),
@@ -652,7 +728,7 @@ csr_file cf(
         .regwrite_e    (regwrite_e),
 
         .iaddr_exc_d   (iaddr_exc_d),
-        .iaddr_exc_e   (iaddr_exc_e),
+        .iaddr_exc_e   (iaddr_exc_e)
     );
 
     // =========================================================

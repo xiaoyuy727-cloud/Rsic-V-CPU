@@ -145,7 +145,7 @@ module core import common::*;(
 
 		.swint			(swint),
 		.trint			(trint),
-		.exint			(exint),
+		.exint			(exint)
 	);
 
 `ifdef VERILATOR
