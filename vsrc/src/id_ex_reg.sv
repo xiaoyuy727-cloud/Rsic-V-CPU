@@ -121,6 +121,20 @@ module id_ex_reg (
     output logic        regwrite_e
 );
 
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (!reset) begin
+        if ((instr_d[6:0] == 7'b1110011) || (instr_e[6:0] == 7'b1110011)) begin
+            $display("[CSR_IDEX] flush=%b stall=%b | IN v=%b pc=%h instr=%h csrwrite=%b csr_num=%h csr_operand=%h csr_value=%h | OLD OUT v=%b pc=%h instr=%h csrwrite=%b csr_num=%h csr_operand=%h csr_value=%h",
+                flush, id_ex_stall,
+                valid_d, pc_d, instr_d, csrwrite_d, csr_num_d, csr_operand_d, csr_value_d,
+                valid_e, pc_e, instr_e, csrwrite_e, csr_num_e, csr_operand_e, csr_value_e
+            );
+        end
+    end
+end
+`endif
+
 always_ff @(posedge clk) begin
     if (reset) begin
         csr_operand_e <= 64'b0;

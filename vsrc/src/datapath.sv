@@ -106,71 +106,23 @@ module datapath import common::*;(
 
 );
 
-
-
-
-
-`ifdef VERILATOR
-logic [63:0] dbg_cnt;
-logic [31:0] no_commit_cnt;
-logic        hang_reported;
-
-logic [63:0] last_commit_pc;
-logic [31:0] last_commit_instr;
-logic [63:0] last_commit_cycle;
-
+`ifdef DEBUG
 always_ff @(posedge clk) begin
-    if (reset) begin
-        dbg_cnt           <= 64'd0;
-        no_commit_cnt     <= 32'd0;
-        hang_reported     <= 1'b0;
-        last_commit_pc    <= 64'd0;
-        last_commit_instr <= 32'd0;
-        last_commit_cycle <= 64'd0;
-    end else begin
-        dbg_cnt <= dbg_cnt + 64'd1;
-
-
-
-        if (commit_valid) begin
-            no_commit_cnt     <= 32'd0;
-            hang_reported     <= 1'b0;
-            last_commit_pc    <= commit_pc;
-            last_commit_instr <= commit_instr;
-            last_commit_cycle <= dbg_cnt;
-
-            $display("[COMMIT_TRACE] cycle=%0d pc=%h instr=%h wen=%b rd=%0d wdata=%h",
-                     dbg_cnt, commit_pc, commit_instr,
-                     commit_wen, commit_wdest, commit_wdata);
-        end else begin
-            no_commit_cnt <= no_commit_cnt + 32'd1;
-
-            if ((no_commit_cnt == 32'd100) && !hang_reported) begin
-                hang_reported <= 1'b1;
-
-                $display("\n================ HANG DETECTED ================");
-                $display("[LAST_COMMIT] cycle=%0d pc=%h instr=%h",
-                         last_commit_cycle, last_commit_pc, last_commit_instr);
-
-                $display("[PIPE] F:%h %h v=%b | D:%h %h v=%b | E:%h %h v=%b | M:%h %h v=%b | W:%h %h v=%b",
-                         pc_f, instr_f, instr_valid_f,
-                         pc_d, instr_d, valid_d,
-                         pc_e, instr_e, valid_e,
-                         pc_m, instr_m, valid_m,
-                         pc_w, instr_w, valid_w);
-
-                $display("[STALL] pc=%b ifid=%b idex=%b exmem=%b memwb=%b mem=%b",
-                         pc_stall,
-                         if_id_stall,
-                         id_ex_stall,
-                         ex_mem_stall,
-                         mem_wb_stall,
-                         mem_stall);
-
-                $display("[IF_VISIBLE] pc_f=%h instr_f=%h instr_valid_f=%b fetch_consume=%b",
-                         pc_f, instr_f, instr_valid_f, fetch_consume);
-
-                $display("===============================================\n");
+    if (!reset) begin
+        if (real_dbus_req.valid || instr_dbus_req.valid || virtual_dbus_req.valid) begin
+            if (real_dbus_req.addr == 64'h0000_0000_8000_1e00 ||
+                instr_dbus_req.addr == 64'h0000_0000_8000_1e00 ||
+                virtual_dbus_req.addr == 64'h0000_0000_8000_1e00) begin
+                $display(
+                    "[DBUS_80001E00_SRC] pc_d=%h instr_d=%h valid_d=%b | pc_e=%h instr_e=%h valid_e=%b | pc_m=%h instr_m=%h valid_m=%b | pc_w=%h instr_w=%h valid_w=%b | real.valid=%b real.addr=%h real.strobe=%h | instr.valid=%b instr.addr=%h instr.strobe=%h | virtual.valid=%b virtual.addr=%h virtual.strobe=%h",
+                    pc_d, instr_d, valid_d,
+                    pc_e, instr_e, valid_e,
+                    pc_m, instr_m, valid_m,
+                    pc_w, instr_w, valid_w,
+                    real_dbus_req.valid, real_dbus_req.addr, real_dbus_req.strobe,
+                    instr_dbus_req.valid, instr_dbus_req.addr, instr_dbus_req.strobe,
+                    virtual_dbus_req.valid, virtual_dbus_req.addr, virtual_dbus_req.strobe
+                );
             end
         end
     end
@@ -179,27 +131,29 @@ end
 
 `ifdef DEBUG
 always_ff @(posedge clk) begin
-    if ((is_mret_w && valid_w) || (is_ecall_w && valid_w)) begin
-        $display("[DP TRAPRET] pc_w=%h instr_w=%h valid_w=%b is_mret_w=%b is_ecall_w=%b csr_mepc=%h csr_mtvec=%h final_redirect_pc=%h privil=%0d satp=%h",
-                 pc_w, instr_w, valid_w, is_mret_w, is_ecall_w,
-                 csr_mepc, csr_mtvec, final_redirect_pc, privil_mode, csr_satp);
+    if (!reset) begin
+        if (real_dbus_req.valid && real_dbus_req.addr[63:32] == 32'h0004_044c) begin
+            $display(
+                "[BAD_REAL_DBUS] real_dbus_req.valid=%b real_dbus_req.addr=%h real_dbus_req.size=%0d real_dbus_req.strobe=%h",
+                real_dbus_req.valid,
+                real_dbus_req.addr,
+                real_dbus_req.size,
+                real_dbus_req.strobe
+            );
+        end
+
+        if (instr_dbus_req.valid && instr_dbus_req.addr[63:32] == 32'h0004_044c) begin
+            $display(
+                "[BAD_INSTR_DBUS] instr_dbus_req.valid=%b instr_dbus_req.addr=%h instr_dbus_req.size=%0d instr_dbus_req.strobe=%h",
+                instr_dbus_req.valid,
+                instr_dbus_req.addr,
+                instr_dbus_req.size,
+                instr_dbus_req.strobe
+            );
+        end
     end
 end
 `endif
-
-
-
-
-`ifdef DEBUG
-always_ff @(posedge clk) begin
-    if (is_mret_w || is_ecall_w) begin
-        $display("[DP TRAPRET] pc_w=%h instr_w=%h valid_w=%b is_mret_w=%b is_ecall_w=%b csr_mepc=%h csr_mtvec=%h final_redirect_pc=%h",
-                 pc_w, instr_w, valid_w, is_mret_w, is_ecall_w,
-                 csr_mepc, csr_mtvec, final_redirect_pc);
-    end
-end
-`endif
-
 
 
     // exception & interruption
@@ -230,10 +184,11 @@ end
 
 
 
-    // MMU & bus
-    logic mmu_flush;
+// MMU & bus
+logic bus_cancel;
 
-    assign mmu_flush = is_ecall_w | is_mret_w;
+// 事务级取消：只有 W 阶段有效提交的 ecall/mret 才能取消总线事务
+assign bus_cancel = valid_w && (is_ecall_w || is_mret_w);
 
     ibus_resp_t  real_ibus_resp;
     ibus_req_t   real_ibus_req;
@@ -248,34 +203,41 @@ end
     dbus_req_t   instr_dbus_req;
 
 
-    ibus_to_dbus itb(
-        .clk        (clk),
-        .reset      (reset),
-        .iresp      (real_ibus_resp), 
-        .ireq       (real_ibus_req),
-        .dreq       (instr_dbus_req),
-        .dresp      (instr_dbus_resp)
-    );
+    ibus_to_dbus itd(
+    .clk    (clk),
+    .reset  (reset),
+    .cancel (bus_cancel),
+    .iresp  (real_ibus_resp),
+    .ireq   (real_ibus_req),
+    .dresp  (instr_dbus_resp),
+    .dreq   (instr_dbus_req)
+);
 
-    dbus_arbiter ab(
-        .clk    (clk),
-        .reset  (reset),
-        .reqs   ({instr_dbus_req,real_dbus_req}),
-        .resps  ({instr_dbus_resp,real_dbus_resp}),
-        .final_req  (virtual_dbus_req),
-        .final_resp (virtual_dbus_resp)
-    );
-    mmu mmu(
-        .clk    (clk),
-        .reset  (reset),
-        .flush       (mmu_flush),
-        .cpu_req    (virtual_dbus_req),
-        .cpu_resp   (virtual_dbus_resp),
-        .mem_req    (dbus_req),
-        .mem_resp   (dbus_resp),
-        .satp       (csr_satp),
-        .privil_mode       (privil_mode)
-    );
+dbus_arbiter ab(
+    .clk        (clk),
+    .reset      (reset),
+    .cancel     (bus_cancel),
+
+    .reqs       ({instr_dbus_req, real_dbus_req}),
+    .resps      ({instr_dbus_resp, real_dbus_resp}),
+
+    .final_req  (virtual_dbus_req),
+    .final_resp (virtual_dbus_resp)
+);
+mmu mmu(
+    .clk         (clk),
+    .reset       (reset),
+    .flush       (bus_cancel),
+
+    .cpu_req     (virtual_dbus_req),
+    .cpu_resp    (virtual_dbus_resp),
+
+    .mem_req     (dbus_req),
+    .mem_resp    (dbus_resp),
+
+    .satp        (csr_satp),
+    .privil_mode (privil_mode)
+);
 
 
     assign ibus_req='0;
@@ -310,7 +272,7 @@ end
         .is_mret        (is_mret_w),
         .load_use_stall (load_use_stall),
         .mem_stall      (mem_stall),
-        .redirect_valid (redirect_valid_w),
+        .redirect_valid (redirect_valid_e),
         .pc_stall       (pc_stall),
         .if_id_stall    (if_id_stall),
         .id_ex_stall    (id_ex_stall),
@@ -837,7 +799,7 @@ end
     logic [63:0] final_redirect_pc;
 
     final_redirect_pc_unit frp(
-        .branch_redirect_pc  (redirect_pc_w),
+        .branch_redirect_pc  (redirect_pc_e),
         .final_redirect_pc   (final_redirect_pc),
         .csr_mepc            (csr_mepc),
         .csr_mtvec           (csr_mtvec),
@@ -995,7 +957,10 @@ end
         .redirect_valid_m (redirect_valid_m),
         .redirect_valid_w (redirect_valid_w),
         .daddr_exc_w    (daddr_exc_w),
-        .daddr_exc_m    (daddr_exc_m)
+        .daddr_exc_m    (daddr_exc_m),
+
+        .csr_operand_m  (csr_operand_m),
+        .csr_operand_w  (csr_operand_w)
     );
 
     // =========================================================
@@ -1030,43 +995,32 @@ end
     logic [4:0]  commit_wdest;
     logic [63:0] commit_wdata;
 
-        assign valid = commit_valid;
+        
 
-    always_ff @(posedge clk) begin
-        if (reset) begin
-            commit_valid <= 1'b0;
-            commit_pc    <= 64'b0;
-            commit_instr <= 32'b0;
-            commit_wen   <= 1'b0;
-            commit_wdest <= 5'b0;
-            commit_wdata <= 64'b0;
-            commit_mem_valid <= 1'b0;
-            commit_mem_addr  <= 64'b0;
-        end
-        else begin
-            commit_valid <= valid_w;
+always_ff @(posedge clk) begin
+    if (reset) begin
+        commit_valid <= 1'b0;
+        commit_pc    <= 64'b0;
+        commit_instr <= 32'b0;
+        commit_wen   <= 1'b0;
+        commit_wdest <= 5'b0;
+        commit_wdata <= 64'b0;
+        commit_mem_valid <= 1'b0;
+        commit_mem_addr  <= 64'b0;
+    end else begin
+        commit_valid <= valid_w;
 
-            if (valid_w) begin
-                commit_pc    <= pc_w;
-                commit_instr <= instr_w;
-                commit_wen   <= regwrite_w;
-                commit_wdest <= rd_w;
-                commit_wdata <= wb_write_data;
-                commit_mem_valid <= mem_inst_w;
-                commit_mem_addr  <= aluout_w;
-            end
-            else begin
-                commit_pc    <= 64'b0;
-                commit_instr <= 32'b0;
-                commit_wen   <= 1'b0;
-                commit_wdest <= 5'b0;
-                commit_wdata <= 64'b0;
-                commit_mem_valid <= 1'b0;
-                commit_mem_addr  <= 64'b0;
-            end
-        end
+        commit_pc    <= pc_w;
+        commit_instr <= instr_w;
+        commit_wen   <= regwrite_w & valid_w;
+        commit_wdest <= rd_w;
+        commit_wdata <= wb_write_data;
+        commit_mem_valid <= mem_inst_w & valid_w;
+        commit_mem_addr  <= aluout_w;
     end
+end
 
+    assign valid = commit_valid;
     assign mem = commit_mem_valid & commit_valid;
     assign memaddr  = commit_mem_addr;
 

@@ -30,7 +30,30 @@ module if_id_reg (
     output logic        valid_d,
     output logic [63:0] pc_d
 );
-`ifdef VERILATOR
+
+
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (!reset) begin
+        if (valid_d || pc_d == 64'b0 || pc_f == 64'b0) begin
+            $display("[IFID_DBG] flush=%b stall=%b fetch_ok=%b |IN pc_f=%h instr_f=%h | OLD valid_d=%b pc_d=%h instr_d=%h",
+                flush,
+                if_id_stall,
+                fetch_ok,
+                pc_f,
+                instr_f,
+                valid_d,
+                pc_d,
+                instr_d
+            );
+        end
+    end
+end
+`endif
+
+
+
+`ifdef DEBUG
 longint dbg_cycle;
 always_ff @(posedge clk) begin
     if (reset) begin

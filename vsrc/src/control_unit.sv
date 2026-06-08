@@ -23,6 +23,16 @@ module control_unit (
     output logic [2:0] branch_type_d
 );
 
+`ifdef DEBUG
+always_comb begin
+    if (opcode == 7'b1110011) begin
+        $display("[CSR_CTRL_D] instr funct3=%b csrwrite_d=%b regwrite_d=%b wb_result_d=%b",
+                 funct3, csrwrite_d, regwrite_d, wb_result_d);
+    end
+end
+`endif
+
+
 always_comb begin
     // default values
     is_ecall_d = 1'b0;

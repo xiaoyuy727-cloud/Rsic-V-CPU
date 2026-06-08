@@ -83,8 +83,26 @@ module mem_wb_reg (
     output logic [63:0]redirect_pc_w,
 
     input logic     daddr_exc_m,
-    output logic    daddr_exc_w
+    output logic    daddr_exc_w,
+
+    input logic [63:0] csr_operand_m,
+    output logic [63:0] csr_operand_w
 );
+
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (!reset) begin
+        if ((instr_m[6:0] == 7'b1110011) || (instr_w[6:0] == 7'b1110011)) begin
+            $display("[CSR_MEMWB] flush=%b stall=%b | IN v=%b pc=%h instr=%h csrwrite=%b csr_num=%h csr_operand=%h | OLD OUT v=%b pc=%h instr=%h csrwrite=%b csr_num=%h csr_operand=%h",
+                flush, mem_wb_stall,
+                valid_m, pc_m, instr_m, csrwrite_m, csr_num_m, csr_operand_m,
+                valid_w, pc_w, instr_w, csrwrite_w, csr_num_w, csr_operand_w
+            );
+        end
+    end
+end
+`endif
+
 
     always_ff @(posedge clk) begin
         if (reset | flush) begin
@@ -106,6 +124,7 @@ module mem_wb_reg (
             redirect_pc_w    <= 64'd0;
             redirect_valid_w <= 1'b0;
             daddr_exc_w      <= 1'b0;
+            csr_operand_w <= 64'b0;
         end
         else if (!mem_wb_stall) begin
             csr_num_w     <= csr_num_m;
@@ -126,6 +145,7 @@ module mem_wb_reg (
             redirect_pc_w    <= redirect_pc_m;
             redirect_valid_w <= redirect_valid_m;
             daddr_exc_w      <= daddr_exc_m;
+            csr_operand_w <= csr_operand_m;
         end
     end
 

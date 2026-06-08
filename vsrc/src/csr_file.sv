@@ -63,7 +63,26 @@ module csr_file import common::*;import csr_pkg::*;(
     output logic [63:0] csr_satp    
 );
 
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (!reset) begin
+        if (csrwrite && new_csr_num == CSR_MEPC) begin
+            $display("[CSR_WRITE_MEPC] pc_w=%h instr_w=%h new_csr_value=%h write_value=%h old_mepc=%h",
+                pc_w, instr_w, new_csr_value, write_value, csr_mepc);
+        end
 
+        if (csrwrite && new_csr_num == CSR_SATP) begin
+            $display("[CSR_WRITE_SATP] pc_w=%h instr_w=%h new_csr_value=%h write_value=%h old_satp=%h",
+                pc_w, instr_w, new_csr_value, write_value, csr_satp);
+        end
+
+        if (is_mret) begin
+            $display("[CSR_MRET] pc_w=%h instr_w=%h csr_mepc=%h csr_mstatus=%h mpp=%b",
+                pc_w, instr_w, csr_mepc, csr_mstatus, csr_mstatus[12:11]);
+        end
+    end
+end
+`endif
 
     //output部分
     assign csr_num=instr_d[31:20];
@@ -145,6 +164,26 @@ module csr_file import common::*;import csr_pkg::*;(
             csr_satp     <= 64'b0;
         end else begin
             csr_mcycle <= csr_mcycle + 64'd1;
+
+
+`ifdef DEBUG
+            if ((instr_w[6:0] == 7'b1110011) || csrwrite) begin
+                $display(
+                    "[CSR_FILE_IN] pc_w=%h instr_w=%h csrwrite=%b new_csr_num=%h new_csr_value=%h old_value=%h write_value=%h mstatus_before=%h mstatus_mask=%h masked_mstatus=%h",
+                    pc_w,
+                    instr_w,
+                    csrwrite,
+                    new_csr_num,
+                    new_csr_value,
+                    old_value,
+                    write_value,
+                    csr_mstatus,
+                    MSTATUS_MASK,
+                    write_value & MSTATUS_MASK
+                );
+            end
+`endif
+
 
             if (csrwrite) begin
                 unique case (new_csr_num)

@@ -97,6 +97,19 @@ module ex_mem_reg (
     output logic [63:0] rs2_val_m,
     output logic [1:0]  is_baj_m
 );
+`ifdef DEBUG
+always_ff @(posedge clk) begin
+    if (!reset) begin
+        if ((instr_e[6:0] == 7'b1110011) || (instr_m[6:0] == 7'b1110011)) begin
+            $display("[CSR_EXMEM] flush=%b stall=%b | IN v=%b pc=%h instr=%h csrwrite=%b csr_num=%h csr_operand=%h csr_value=%h | OLD OUT v=%b pc=%h instr=%h csrwrite=%b csr_num=%h csr_operand=%h csr_value=%h",
+                flush, ex_mem_stall,
+                valid_e, pc_e, instr_e, csrwrite_e, csr_num_e, csr_operand_e, csr_value_e,
+                valid_m, pc_m, instr_m, csrwrite_m, csr_num_m, csr_operand_m, csr_value_m
+            );
+        end
+    end
+end
+`endif
 
     always_ff @(posedge clk) begin
         if (reset | flush) begin

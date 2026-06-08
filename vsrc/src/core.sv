@@ -148,6 +148,26 @@ module core import common::*;(
 		.exint			(exint)
 	);
 
+
+`ifdef VERILATOR
+always_ff @(posedge clk) begin
+    if (!reset) begin
+        if (dreq.valid && dreq.addr[63:32] == 32'h0004_044c) begin
+            $display(
+                "[BAD_CORE_DREQ] dreq.valid=%b dreq.addr=%h dreq.size=%0d dreq.strobe=%h",
+                dreq.valid,
+                dreq.addr,
+                dreq.size,
+                dreq.strobe
+            );
+        end
+    end
+end
+`endif
+
+
+
+
 `ifdef VERILATOR
 	DifftestInstrCommit DifftestInstrCommit(
 		.clock              (clk),

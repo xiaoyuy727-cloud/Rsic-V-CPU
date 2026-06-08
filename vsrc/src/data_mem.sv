@@ -48,18 +48,17 @@ module data_mem (
 );
 
 
-
 `ifdef VERILATOR
-longint dbg_cycle;
-always_ff @(posedge clk) begin
-    if (rst) begin
-        dbg_cycle <= 0;
-    end else begin
-        dbg_cycle <= dbg_cycle + 1;
-
-
-
-
+always_comb begin
+    if (dreq.valid && dreq.addr[63:32] == 32'h0004_044c) begin
+        $display(
+            "[BAD_DATA_MEM] dreq.valid=%b dreq.addr=%h dreq.size=%0d dreq.strobe=%h address=%h",
+            dreq.valid,
+            dreq.addr,
+            dreq.size,
+            dreq.strobe,
+            address
+        );
     end
 end
 `endif
