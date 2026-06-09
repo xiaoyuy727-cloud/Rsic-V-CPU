@@ -105,7 +105,7 @@ end
     logic        effective_redirect_valid;
     logic [63:0] effective_redirect_pc;
 
-    assign redirect_valid = branch_redirect_valid | is_ecall | is_mret;
+    assign redirect_valid = branch_redirect_valid ;
 
     assign effective_redirect_valid = pending_redirect_valid | redirect_valid;
     assign effective_redirect_pc =

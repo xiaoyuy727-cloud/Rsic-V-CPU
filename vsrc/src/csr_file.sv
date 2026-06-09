@@ -3,53 +3,32 @@
 `include "include/csr.sv"
 `endif
 
-//模块名称：csr_file
-//模块接口
-//input logic [31:0]instr
-//input logic [11:0]new_csr_num
-//input logic [63:0] new_csr_value
-//input logic csrwrite
-//input logic [63:0] pc_w 
-//input logic is_ecall
-//input logic is_mret
-//output logic [63:0] csr_value
-//output logic [11:0] csr_num
-
-//mstatus[3]     // MIE
-//mstatus[7]     // MPIE
-//mstatus[12:11] // MPP
-//mstatus[17]    // MPRV
-
-//模块功能：读取instr,将[31:20]位写入csr_num，将这个csr号对应的寄存器的值写入csr_value
-//当csrwrite为1时，考虑instr[14:12]。
-//                如果为001/101，将new_csr_value写入new_csr_num对应的寄存器。
-//                如果为010/110，将new_csr_value中为1的位在new_csr_num对应的寄存器中置为1。
-//                如果为011/111，将new_csr_value中为1的位在new_csr_num对应的寄存器中置为0。
-
-
-module csr_file import common::*;import csr_pkg::*;(
+module csr_file import common::*; import csr_pkg::*;(
     input logic clk,
     input logic reset,
-    input logic [31:0]instr_d,
-    input logic [31:0]instr_w,
-    input logic [11:0]new_csr_num,
+
+    input logic [31:0] instr_d,
+    input logic [31:0] instr_w,
+
+    input logic [11:0] new_csr_num,
     input logic [63:0] new_csr_value,
-    input logic csrwrite,
-    input logic [63:0] pc_w, 
-    input logic is_ecall,
-    input logic is_mret,
-    input logic [1:0]privil_mode,
+    input logic        csrwrite,
+
+    input logic        trap_valid,
+    input logic        trap_is_interrupt,
+    input logic [63:0] trap_cause,
+    input logic [63:0] trap_pc,
+    input logic [1:0]  trap_priv,
+
+    input logic        mret_valid,
 
     input logic swint,
     input logic trint,
     input logic exint,
 
-    input logic iaddr_exc_w,
-    input logic daddr_exc_w,
-
     output logic [63:0] csr_value,
     output logic [11:0] csr_num,
-    
+
     output logic [63:0] csr_mstatus,
     output logic [63:0] csr_mtvec,
     output logic [63:0] csr_mip,
@@ -60,32 +39,18 @@ module csr_file import common::*;import csr_pkg::*;(
     output logic [63:0] csr_mepc,
     output logic [63:0] csr_mcycle,
     output logic [63:0] csr_mhartid,
-    output logic [63:0] csr_satp    
+    output logic [63:0] csr_satp
 );
 
-`ifdef DEBUG
-always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (csrwrite && new_csr_num == CSR_MEPC) begin
-            $display("[CSR_WRITE_MEPC] pc_w=%h instr_w=%h new_csr_value=%h write_value=%h old_mepc=%h",
-                pc_w, instr_w, new_csr_value, write_value, csr_mepc);
-        end
 
-        if (csrwrite && new_csr_num == CSR_SATP) begin
-            $display("[CSR_WRITE_SATP] pc_w=%h instr_w=%h new_csr_value=%h write_value=%h old_satp=%h",
-                pc_w, instr_w, new_csr_value, write_value, csr_satp);
-        end
 
-        if (is_mret) begin
-            $display("[CSR_MRET] pc_w=%h instr_w=%h csr_mepc=%h csr_mstatus=%h mpp=%b",
-                pc_w, instr_w, csr_mepc, csr_mstatus, csr_mstatus[12:11]);
-        end
-    end
-end
-`endif
 
-    //output部分
-    assign csr_num=instr_d[31:20];
+
+
+
+
+
+    assign csr_num = instr_d[31:20];
 
     always_comb begin
         unique case (csr_num)
@@ -104,7 +69,6 @@ end
         endcase
     end
 
-    //input部分
     logic [63:0] old_value;
     logic [63:0] write_value;
 
@@ -127,27 +91,12 @@ end
 
     always_comb begin
         unique case (instr_w[14:12])
-            3'b001, 3'b101: begin
-                // CSRRW / CSRRWI
-                write_value = new_csr_value;
-            end
-
-            3'b010, 3'b110: begin
-                // CSRRS / CSRRSI
-                write_value = old_value | new_csr_value;
-            end
-
-            3'b011, 3'b111: begin
-                // CSRRC / CSRRCI
-                write_value = old_value & ~new_csr_value;
-            end
-
-            default: begin
-                write_value = old_value;
-            end
+            3'b001, 3'b101: write_value = new_csr_value;
+            3'b010, 3'b110: write_value = old_value | new_csr_value;
+            3'b011, 3'b111: write_value = old_value & ~new_csr_value;
+            default:        write_value = old_value;
         endcase
     end
-
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -162,34 +111,41 @@ end
             csr_mtval    <= 64'b0;
             csr_mcycle   <= 64'b0;
             csr_satp     <= 64'b0;
-        end else begin
+        end
+        else begin
             csr_mcycle <= csr_mcycle + 64'd1;
 
+            csr_mip[3]  <= swint;
+            csr_mip[7]  <= trint;
+            csr_mip[11] <= exint;
 
-`ifdef DEBUG
-            if ((instr_w[6:0] == 7'b1110011) || csrwrite) begin
-                $display(
-                    "[CSR_FILE_IN] pc_w=%h instr_w=%h csrwrite=%b new_csr_num=%h new_csr_value=%h old_value=%h write_value=%h mstatus_before=%h mstatus_mask=%h masked_mstatus=%h",
-                    pc_w,
-                    instr_w,
-                    csrwrite,
-                    new_csr_num,
-                    new_csr_value,
-                    old_value,
-                    write_value,
-                    csr_mstatus,
-                    MSTATUS_MASK,
-                    write_value & MSTATUS_MASK
-                );
+            if (trap_valid) begin
+                csr_mstatus[12:11] <= trap_priv;
+                csr_mstatus[7]     <= csr_mstatus[3];
+                csr_mstatus[3]     <= 1'b0;
+
+                csr_mepc           <= trap_pc;
+                csr_mcause         <= {trap_is_interrupt, trap_cause[62:0]};
+                csr_mtval          <= 64'b0;
             end
-`endif
-
-
-            if (csrwrite) begin
+            else if (mret_valid) begin
+                csr_mstatus[3]     <= csr_mstatus[7];
+                csr_mstatus[7]     <= 1'b1;
+                csr_mstatus[12:11] <= 2'b00;
+                csr_mstatus[16:15] <= 2'b00;
+            end
+            else if (csrwrite) begin
                 unique case (new_csr_num)
                     CSR_MSTATUS:  csr_mstatus  <= write_value & MSTATUS_MASK;
                     CSR_MIE:      csr_mie      <= write_value;
-                    CSR_MIP:      csr_mip      <= write_value & MIP_MASK;
+
+                    CSR_MIP: begin
+                        csr_mip      <= write_value & MIP_MASK;
+                        csr_mip[3]   <= swint;
+                        csr_mip[7]   <= trint;
+                        csr_mip[11]  <= exint;
+                    end
+
                     CSR_MTVEC:    csr_mtvec    <= write_value & MTVEC_MASK;
                     CSR_MSCRATCH: csr_mscratch <= write_value;
                     CSR_MEPC:     csr_mepc     <= write_value;
@@ -197,57 +153,36 @@ end
                     CSR_MTVAL:    csr_mtval    <= write_value;
                     CSR_MCYCLE:   csr_mcycle   <= write_value;
                     CSR_SATP:     csr_satp     <= write_value;
-
                     default: ;
                 endcase
-            end else if (is_mret) begin
-                csr_mstatus[12:11] <=2'b00;
-                csr_mstatus[3]<=csr_mstatus[7];
-                csr_mstatus[7]<=1;
-            end else if (is_ecall) begin
-                csr_mstatus[12:11]<=privil_mode;
-                csr_mstatus[7]<=csr_mstatus[3];
-                csr_mstatus[3]<=0;
-                csr_mepc<=pc_w;
-                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
-            end else if (swint) begin
-                // to do
-                csr_mstatus[12:11]<=privil_mode;
-                csr_mstatus[7]<=csr_mstatus[3];
-                csr_mstatus[3]<=0;
-                csr_mepc<=pc_w;
-                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
-            end else if (exint) begin
-                // to do
-                csr_mstatus[12:11]<=privil_mode;
-                csr_mstatus[7]<=csr_mstatus[3];
-                csr_mstatus[3]<=0;
-                csr_mepc<=pc_w;
-                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
-            end else if (trint) begin
-                // to do 
-                csr_mstatus[12:11]<=privil_mode;
-                csr_mstatus[7]<=csr_mstatus[3];
-                csr_mstatus[3]<=0;
-                csr_mepc<=pc_w;
-                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
-            end else if (daddr_exc_w) begin
-                // to do
-                csr_mstatus[12:11]<=privil_mode;
-                csr_mstatus[7]<=csr_mstatus[3];
-                csr_mstatus[3]<=0;
-                csr_mepc<=pc_w;
-                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
-            end else if (iaddr_exc_w) begin
-                // to do 
-                csr_mstatus[12:11]<=privil_mode;
-                csr_mstatus[7]<=csr_mstatus[3];
-                csr_mstatus[3]<=0;
-                csr_mepc<=pc_w;
-                csr_mcause<=(privil_mode==2'b00)?64'd8:64'd11;
             end
-
         end
     end
+
+`ifdef DEBUG
+    always_ff @(posedge clk) begin
+        if (!reset) begin
+            if (trap_valid) begin
+                $display("[CSR_TRAP] trap_pc=%h instr_w=%h cause=%h interrupt=%b trap_priv=%b mstatus_before=%h",
+                    trap_pc, instr_w, trap_cause, trap_is_interrupt, trap_priv, csr_mstatus);
+            end
+
+            if (mret_valid) begin
+                $display("[CSR_MRET] instr_w=%h csr_mepc=%h csr_mstatus=%h mpp=%b",
+                    instr_w, csr_mepc, csr_mstatus, csr_mstatus[12:11]);
+            end
+
+            if (csrwrite && new_csr_num == CSR_MEPC) begin
+                $display("[CSR_WRITE_MEPC] instr_w=%h new_csr_value=%h write_value=%h old_mepc=%h",
+                    instr_w, new_csr_value, write_value, csr_mepc);
+            end
+
+            if (csrwrite && new_csr_num == CSR_SATP) begin
+                $display("[CSR_WRITE_SATP] instr_w=%h new_csr_value=%h write_value=%h old_satp=%h",
+                    instr_w, new_csr_value, write_value, csr_satp);
+            end
+        end
+    end
+`endif
 
 endmodule

@@ -1,62 +1,59 @@
-//模块名称：saf_unit
-//接口：input logic mem_stall
-//      input logic redirect_valid
-//      input logic is_ecall
-//      input logic is_mret
-//      output logic pc_stall
-//      output logic if_id_stall
-//      output logic id_ex_stall
-//      output logic ex_mem_stall
-//      output logic mem_wb_stall
-//      output logic if_id_flush
-//      output logic id_ex_flush
-//功能：将memstall的值写给所有output的stall信号。
-//同时，如果redirect_valid是1，将ifid和idex的flush写为1.
-
+// 模块名称：saf_unit
+// 功能：统一生成流水线 stall / flush
+//
+// 语义：
+//   mem_stall       ：全流水线保持
+//   load_use_stall  ：PC、IF/ID stall，同时 ID/EX 插 bubble
+//   branch_redirect ：清 IF/ID、ID/EX
+//   trap/mret       ：清 IF/ID、ID/EX、EX/MEM，
+//                    不清 MEM/WB，避免把正在提交的 trap/mret 自己刷掉
 module saf_unit (
     input  logic mem_stall,
-    input  logic redirect_valid,
     input  logic load_use_stall,
-    input  logic is_ecall,
-    input  logic is_mret,
 
-    input logic swint,
-    input logic trint,
-    input logic exint,
-
-    input logic iaddr_exc_w,
-    input logic daddr_exc_w,
-
+    input  logic branch_redirect_valid,
+    input  logic trap_valid,
+    input  logic mret_valid,
 
     output logic pc_stall,
     output logic if_id_stall,
     output logic id_ex_stall,
     output logic ex_mem_stall,
     output logic mem_wb_stall,
+
     output logic if_id_flush,
     output logic id_ex_flush,
     output logic ex_mem_flush,
     output logic mem_wb_flush
 );
-    logic interrupt,exception;
-    assign interrupt = swint | trint | exint;
-    assign exception = is_ecall | iaddr_exc_w | daddr_exc_w;
+
+    logic control_redirect;
+    logic commit_redirect;
+
+    assign control_redirect = branch_redirect_valid | trap_valid | mret_valid;
+    assign commit_redirect  = trap_valid | mret_valid;
 
     always_comb begin
+        //====================================================
+        // Stall
+        //====================================================
         pc_stall     = mem_stall | load_use_stall;
-        
+
         if_id_stall  = mem_stall | load_use_stall;
         id_ex_stall  = mem_stall;
         ex_mem_stall = mem_stall;
         mem_wb_stall = mem_stall;
 
-        if_id_flush  = redirect_valid | interrupt | exception | is_mret ;
-        id_ex_flush  = redirect_valid | load_use_stall | interrupt | exception | is_mret;
-        ex_mem_flush  = interrupt | exception | is_mret;
-        mem_wb_flush  = interrupt | exception | is_mret;
+        //====================================================
+        // Flush
+        //====================================================
+        if_id_flush  = control_redirect;
+        id_ex_flush  = branch_redirect_valid | load_use_stall | commit_redirect;
 
-
-
+        // trap/mret 在 W 阶段提交，需要清掉更年轻指令。
+        // 不清 MEM/WB，避免当前 W 阶段事件被自己清掉。
+        ex_mem_flush = commit_redirect;
+        mem_wb_flush = 1'b0;
     end
 
 endmodule

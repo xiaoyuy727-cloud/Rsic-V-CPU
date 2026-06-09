@@ -105,55 +105,268 @@ module datapath import common::*;(
     output logic [1:0] privil_mode    
 
 );
+//243294
+
+`ifdef VER
+longint dbg_cycle_swint;
+logic dbg_hit_swint;
+
+always_ff @(posedge clk) begin
+    if (reset) begin
+        dbg_cycle_swint <= 0;
+        dbg_hit_swint <= 1'b0;
+    end else begin
+        dbg_cycle_swint <= dbg_cycle_swint + 1;
+
+        if (!dbg_hit_swint && trap_valid && swint_take) begin
+            dbg_hit_swint <= 1'b1;
+            $display("[DBG_SWINT_TRAP] cycle=%0d pc_f=%h instr_f=%h instr_valid_f=%b pc_d=%h instr_d=%h valid_d=%b pc_e=%h instr_e=%h valid_e=%b pc_m=%h instr_m=%h valid_m=%b pc_w=%h instr_w=%h valid_w=%b trap_pc=%h trap_cause=%h swint_take=%b trint_take=%b exint_take=%b csr_mstatus=%h csr_mepc=%h csr_mcause=%h csr_mip=%h csr_mie=%h privil_mode=%b final_redirect_pc=%h", dbg_cycle_swint, pc_f, instr_f, instr_valid_f, pc_d, instr_d, valid_d, pc_e, instr_e, valid_e, pc_m, instr_m, valid_m, pc_w, instr_w, valid_w, trap_pc, trap_cause, swint_take, trint_take, exint_take, csr_mstatus, csr_mepc, csr_mcause, csr_mip, csr_mie, privil_mode, final_redirect_pc);
+        end
+    end
+end
+`endif
 
 `ifdef DEBUG
-always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (real_dbus_req.valid || instr_dbus_req.valid || virtual_dbus_req.valid) begin
-            if (real_dbus_req.addr == 64'h0000_0000_8000_1e00 ||
-                instr_dbus_req.addr == 64'h0000_0000_8000_1e00 ||
-                virtual_dbus_req.addr == 64'h0000_0000_8000_1e00) begin
-                $display(
-                    "[DBUS_80001E00_SRC] pc_d=%h instr_d=%h valid_d=%b | pc_e=%h instr_e=%h valid_e=%b | pc_m=%h instr_m=%h valid_m=%b | pc_w=%h instr_w=%h valid_w=%b | real.valid=%b real.addr=%h real.strobe=%h | instr.valid=%b instr.addr=%h instr.strobe=%h | virtual.valid=%b virtual.addr=%h virtual.strobe=%h",
-                    pc_d, instr_d, valid_d,
-                    pc_e, instr_e, valid_e,
-                    pc_m, instr_m, valid_m,
-                    pc_w, instr_w, valid_w,
-                    real_dbus_req.valid, real_dbus_req.addr, real_dbus_req.strobe,
-                    instr_dbus_req.valid, instr_dbus_req.addr, instr_dbus_req.strobe,
-                    virtual_dbus_req.valid, virtual_dbus_req.addr, virtual_dbus_req.strobe
-                );
+    longint dbg_cycle;
+    logic dbg_hit_6028;
+
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            dbg_cycle <= 0;
+            dbg_hit_6028 <= 1'b0;
+        end
+        else begin
+            dbg_cycle <= dbg_cycle + 1;
+
+            if (!dbg_hit_6028 && valid_w && pc_w == 64'h000000008000607c) begin
+                dbg_hit_6028 <= 1'b1;
+                $display("[DBG_HIT_6028] cycle=%0d pc_w=%h instr_w=%h valid_w=%b iaddr_exc_w=%b instr_exc_w=%b daddr_exc_w=%b is_ecall_w=%b is_mret_w=%b trap_valid=%b exception_valid_w=%b trap_cause=%h trap_pc=%h final_redirect_pc=%h privil_mode=%b csr_mstatus=%h csr_mepc=%h csr_mcause=%h csr_mtvec=%h redirect_valid_w=%b redirect_pc_w=%h redirect_valid_m=%b redirect_pc_m=%h redirect_valid_e=%b redirect_pc_e=%h pc_e=%h instr_e=%h valid_e=%b aluout_e=%h rs1_eff_e=%h imm_e=%h", dbg_cycle, pc_w, instr_w, valid_w, iaddr_exc_w, instr_exc_w, daddr_exc_w, is_ecall_w, is_mret_w, trap_valid, exception_valid_w, trap_cause, trap_pc, final_redirect_pc, privil_mode, csr_mstatus, csr_mepc, csr_mcause, csr_mtvec, redirect_valid_w, redirect_pc_w, redirect_valid_m, redirect_pc_m, redirect_valid_e, redirect_pc_e, pc_e, instr_e, valid_e, aluout_e, rs1_eff_e, imm_e);
             end
         end
     end
-end
 `endif
 
-`ifdef DEBUG
-always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (real_dbus_req.valid && real_dbus_req.addr[63:32] == 32'h0004_044c) begin
-            $display(
-                "[BAD_REAL_DBUS] real_dbus_req.valid=%b real_dbus_req.addr=%h real_dbus_req.size=%0d real_dbus_req.strobe=%h",
-                real_dbus_req.valid,
-                real_dbus_req.addr,
-                real_dbus_req.size,
-                real_dbus_req.strobe
-            );
-        end
 
-        if (instr_dbus_req.valid && instr_dbus_req.addr[63:32] == 32'h0004_044c) begin
-            $display(
-                "[BAD_INSTR_DBUS] instr_dbus_req.valid=%b instr_dbus_req.addr=%h instr_dbus_req.size=%0d instr_dbus_req.strobe=%h",
-                instr_dbus_req.valid,
-                instr_dbus_req.addr,
-                instr_dbus_req.size,
-                instr_dbus_req.strobe
+`ifdef VERIL
+    longint dbg_cycle;
+
+    localparam longint DBG_BEGIN = 1807960;
+    localparam longint DBG_END   = 1808000;
+
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            dbg_cycle <= 0;
+        end
+        else begin
+            dbg_cycle <= dbg_cycle + 1;
+
+            if (dbg_cycle >= DBG_BEGIN && dbg_cycle <= DBG_END) begin
+$display("[REDIRECT_ARB] pc_f=%h instr_f=%h instr_valid_f=%b trap_valid=%b mret_valid=%b final_redirect_pc=%h csr_mtvec=%h csr_mepc=%h redirect_valid_e=%b redirect_pc_e=%h redirect_iaddr_exc_e=%b redirect_valid_m=%b redirect_pc_m=%h iaddr_exc_m=%b redirect_valid_w=%b redirect_pc_w=%h iaddr_exc_w=%b if_id_flush=%b id_ex_flush=%b ex_mem_flush=%b mem_wb_flush=%b pc_stall=%b if_id_stall=%b id_ex_stall=%b ex_mem_stall=%b mem_wb_stall=%b",
+                pc_f,
+                instr_f,
+                instr_valid_f,
+                trap_valid,
+                mret_valid,
+                final_redirect_pc,
+                csr_mtvec,
+                csr_mepc,
+                redirect_valid_e,
+                redirect_pc_e,
+                redirect_iaddr_exc_e,
+                redirect_valid_m,
+                redirect_pc_m,
+                iaddr_exc_m,
+                redirect_valid_w,
+                redirect_pc_w,
+                iaddr_exc_w,
+                if_id_flush,
+                id_ex_flush,
+                ex_mem_flush,
+                mem_wb_flush,
+                pc_stall,
+                if_id_stall,
+                id_ex_stall,
+                ex_mem_stall,
+                mem_wb_stall
             );
+            end
+        end
+    end
+`endif
+
+
+
+logic fetch_iaddr_exc_e;
+logic redirect_iaddr_exc_e;
+logic iaddr_exc_e_to_m;
+
+assign fetch_iaddr_exc_e = iaddr_exc_e;
+
+assign redirect_iaddr_exc_e =
+    valid_e &&
+    redirect_valid_e &&
+    (redirect_pc_e[1:0] != 2'b00);
+
+assign iaddr_exc_e_to_m =
+    fetch_iaddr_exc_e || redirect_iaddr_exc_e;
+
+
+
+// =========================================================
+// unified trap / redirect events
+// =========================================================
+logic        mret_valid;
+logic        exception_valid_w;
+
+logic        interrupt_enable;
+logic [63:0] mip_next_for_int;
+logic        swint_take;
+logic        trint_take;
+logic        exint_take;
+logic        interrupt_take;
+
+logic        trap_valid;
+logic        trap_is_interrupt;
+logic [63:0] trap_cause;
+logic [63:0] trap_pc;
+
+logic        branch_valid;
+
+// ---------------------------------------------------------
+// mret
+// ---------------------------------------------------------
+assign mret_valid = valid_w && is_mret_w;
+
+// ---------------------------------------------------------
+// sync exception
+// ---------------------------------------------------------
+assign exception_valid_w =
+    valid_w && (
+        iaddr_exc_w ||
+        instr_exc_w ||
+        daddr_exc_w ||
+        is_ecall_w
+    );
+
+// ---------------------------------------------------------
+// interrupt evaluate
+//
+// Lab6 要求：
+// 1. 当前 M mode 时，需要 mstatus.MIE=1；非 M mode 默认允许
+// 2. mip[i] && mie[i]
+// 3. 本 Lab 只要求“刚收到中断信号”时 evaluate
+//
+// 所以这里用 mip_next_for_int，避免 swint/trint/exint 当拍刚来，
+// csr_mip 还没来得及在 csr_file 时序更新。
+// ---------------------------------------------------------
+assign interrupt_enable =
+    (privil_mode != 2'b11) || csr_mstatus[3];
+
+assign mip_next_for_int =
+    csr_mip |
+    (swint ? 64'h0000_0000_0000_0008 : 64'b0) |
+    (trint ? 64'h0000_0000_0000_0080 : 64'b0) |
+    (exint ? 64'h0000_0000_0000_0800 : 64'b0);
+
+assign swint_take =
+    swint &&
+    interrupt_enable &&
+    mip_next_for_int[3] &&
+    csr_mie[3];
+
+assign trint_take =
+    trint &&
+    interrupt_enable &&
+    mip_next_for_int[7] &&
+    csr_mie[7];
+
+assign exint_take =
+    exint &&
+    interrupt_enable &&
+    mip_next_for_int[11] &&
+    csr_mie[11];
+
+assign interrupt_take =
+    !exception_valid_w &&
+    !mret_valid &&
+    (exint_take || trint_take || swint_take);
+
+// ---------------------------------------------------------
+// final trap
+// ---------------------------------------------------------
+assign trap_valid        = exception_valid_w || interrupt_take;
+assign trap_is_interrupt = interrupt_take;
+
+// 异常 mepc = 异常指令 pc。
+// 中断是异步 trap，这里用当前 fetch pc 作为恢复点。
+//assign trap_pc =
+//    exception_valid_w ? pc_w : pc_f;
+
+logic [63:0] last_valid_pc;
+
+always_ff @(posedge clk) begin
+    if (reset) begin
+        last_valid_pc <= PCINIT;
+    end else begin
+        if (valid_w) begin
+            last_valid_pc <= pc_w + 64'd4;
+        end else if (valid_m) begin
+            last_valid_pc <= pc_m;
+        end else if (valid_e) begin
+            last_valid_pc <= pc_e;
+        end else if (valid_d) begin
+            last_valid_pc <= pc_d;
+        end else if (instr_valid_f) begin
+            last_valid_pc <= pc_f;
         end
     end
 end
-`endif
+
+assign trap_pc =
+    exception_valid_w ? pc_w : last_valid_pc;
+
+// ---------------------------------------------------------
+// branch
+// ---------------------------------------------------------
+assign branch_valid = redirect_valid_e;
+
+// ---------------------------------------------------------
+// trap cause
+// 优先级：
+//   iaddr_exc > illegal_instr > daddr_exc > ecall > external > timer > software
+// ---------------------------------------------------------
+always_comb begin
+    trap_cause = 64'b0;
+
+    if (iaddr_exc_w) begin
+        trap_cause = 64'd0;      // instruction address misaligned
+    end
+    else if (instr_exc_w) begin
+        trap_cause = 64'd2;      // illegal instruction
+    end
+    else if (daddr_exc_w) begin
+        if (instr_w[6:0] == 7'b0100011)
+            trap_cause = 64'd6;  // store address misaligned
+        else
+            trap_cause = 64'd4;  // load address misaligned
+    end
+    else if (valid_w && is_ecall_w) begin
+        if (privil_mode == 2'b00)
+            trap_cause = 64'd8;  // ecall from U
+        else
+            trap_cause = 64'd11; // ecall from M
+    end
+    else if (exint_take) begin
+        trap_cause = 64'd11;     // machine external interrupt
+    end
+    else if (trint_take) begin
+        trap_cause = 64'd7;      // machine timer interrupt
+    end
+    else if (swint_take) begin
+        trap_cause = 64'd3;      // machine software interrupt
+    end
+end
+
 
 
     // exception & interruption
@@ -188,7 +401,7 @@ end
 logic bus_cancel;
 
 // 事务级取消：只有 W 阶段有效提交的 ecall/mret 才能取消总线事务
-assign bus_cancel = valid_w && (is_ecall_w || is_mret_w);
+assign bus_cancel = trap_valid || mret_valid;
 
     ibus_resp_t  real_ibus_resp;
     ibus_req_t   real_ibus_req;
@@ -267,29 +480,25 @@ mmu mmu(
     logic [63:0] redirect_pc_m;
     logic [63:0] redirect_pc_w;
 
-    saf_unit st(
-        .is_ecall       (is_ecall_w),
-        .is_mret        (is_mret_w),
-        .load_use_stall (load_use_stall),
-        .mem_stall      (mem_stall),
-        .redirect_valid (redirect_valid_e),
-        .pc_stall       (pc_stall),
-        .if_id_stall    (if_id_stall),
-        .id_ex_stall    (id_ex_stall),
-        .ex_mem_stall   (ex_mem_stall),
-        .mem_wb_stall   (mem_wb_stall),
-        .if_id_flush    (if_id_flush),
-        .id_ex_flush    (id_ex_flush),
-        .ex_mem_flush   (ex_mem_flush),
-        .mem_wb_flush   (mem_wb_flush),  //暂时写成0.避免mret、iecall把自己flush掉。
+saf_unit st(
+    .mem_stall             (mem_stall),
+    .load_use_stall        (load_use_stall),
 
-        .swint          (swint),
-        .trint          (trint),
-        .exint          (exint),
+    .branch_redirect_valid (branch_valid),
+    .trap_valid            (trap_valid),
+    .mret_valid            (mret_valid),
 
-        .daddr_exc_w    (daddr_exc_w),
-        .iaddr_exc_w    (iaddr_exc_w)
-    );
+    .pc_stall              (pc_stall),
+    .if_id_stall           (if_id_stall),
+    .id_ex_stall           (id_ex_stall),
+    .ex_mem_stall          (ex_mem_stall),
+    .mem_wb_stall          (mem_wb_stall),
+
+    .if_id_flush           (if_id_flush),
+    .id_ex_flush           (id_ex_flush),
+    .ex_mem_flush          (ex_mem_flush),
+    .mem_wb_flush          (mem_wb_flush)
+);
 
     // =========================================================
     // csr
@@ -338,48 +547,46 @@ always_comb begin
 end
 
 csr_file cf(
-    .clk    (clk),
-    .reset  (reset),
+    .clk           (clk),
+    .reset         (reset),
 
-    // D 阶段读 CSR 旧值
-    .instr_d(instr_d),
+    .instr_d       (instr_d),
+    .instr_w       (instr_w),
 
-    // M 阶段写 CSR
-    // 写在 M 阶段，是为了到 W 阶段 difftest commit 时 CSR 状态已经更新
-    .instr_w(instr_w),
+    .new_csr_num   (csr_num_w),
+    .new_csr_value (csr_operand_w),
+    .csrwrite      (csrwrite_w & valid_w),
 
-    .new_csr_num    (csr_num_w),
-    .new_csr_value  (csr_operand_w),
-    .csrwrite       (csrwrite_w & valid_w),
+    .trap_valid        (trap_valid),
+    .trap_is_interrupt (trap_is_interrupt),
+    .trap_cause        (trap_cause),
+    .trap_pc           (trap_pc),
+    .trap_priv         (privil_mode),
 
-    .csr_value      (csr_value_d),
-    .csr_num        (csr_num_d),
+    .mret_valid    (mret_valid),
 
-    .pc_w           (pc_w),
-    .is_ecall       (is_ecall_w & valid_w),
-    .is_mret        (is_mret_w & valid_w),
-    .privil_mode    (privil_mode),
+    .swint         (swint),
+    .trint         (trint),
+    .exint         (exint),
 
-    .csr_mtvec      (csr_mtvec),
-    .csr_mip        (csr_mip),
-    .csr_mie        (csr_mie),
-    .csr_mscratch   (csr_mscratch),
-    .csr_mcause     (csr_mcause),
-    .csr_mtval      (csr_mtval),
-    .csr_mepc       (csr_mepc),
-    .csr_mcycle     (csr_mcycle),
-    .csr_mhartid    (csr_mhartid),
-    .csr_satp       (csr_satp),
-    .csr_mstatus    (csr_mstatus),
+    .csr_value     (csr_value_d),
+    .csr_num       (csr_num_d),
 
-    .swint          (swint),
-    .trint          (trint),
-    .exint          (exint),
-
-    .daddr_exc_w    (daddr_exc_w),
-    .iaddr_exc_w    (iaddr_exc_w)
+    .csr_mtvec     (csr_mtvec),
+    .csr_mip       (csr_mip),
+    .csr_mie       (csr_mie),
+    .csr_mscratch  (csr_mscratch),
+    .csr_mcause    (csr_mcause),
+    .csr_mtval     (csr_mtval),
+    .csr_mepc      (csr_mepc),
+    .csr_mcycle    (csr_mcycle),
+    .csr_mhartid   (csr_mhartid),
+    .csr_satp      (csr_satp),
+    .csr_mstatus   (csr_mstatus)
 );
 
+
+ 
     // =========================================================
     // PRIVILEGE_UNIT
     // =========================================================
@@ -397,15 +604,16 @@ csr_file cf(
 
 
 
-    privilege_unit pu(
-        .clk        (clk),
-        .rst        (reset),
-        .privil_mode    (privil_mode),
-        .is_ecall   (is_ecall_w & valid_w),
-        .is_mret    (is_mret_w & valid_w),
-        .mpp        (csr_mstatus[12:11])
+privilege_unit pu(
+    .clk(clk),
+    .rst(reset),
 
-    );
+    .trap_valid(trap_valid),
+    .mret_valid(mret_valid),
+
+    .mpp(csr_mstatus[12:11]),
+    .privil_mode(privil_mode)
+);
 
 
     // =========================================================
@@ -434,6 +642,14 @@ csr_file cf(
 
     assign fetch_consume = instr_valid_f & ~if_id_stall;
 
+logic final_redirect_valid;
+
+assign final_redirect_valid =
+    branch_valid ||
+    trap_valid ||
+    mret_valid;
+
+
     instr_mem if3(
         .clk            (clk),
         .reset          (reset),
@@ -443,10 +659,10 @@ csr_file cf(
         .ibus_resp      (real_ibus_resp),
         .pcinit         (PCINIT),
         .redirect_pc    (final_redirect_pc),
-        .branch_redirect_valid (redirect_valid_e),
+        .branch_redirect_valid (final_redirect_valid),
         
-        .is_ecall       (is_ecall_w & valid_w),
-        .is_mret        (is_mret_w & valid_w),
+        .is_ecall       (1'b0),
+        .is_mret        (1'b0),
 
         .iaddr_exc      (iaddr_exc_f),
         .instr          (instr_f),
@@ -798,21 +1014,18 @@ end
 
     logic [63:0] final_redirect_pc;
 
-    final_redirect_pc_unit frp(
-        .branch_redirect_pc  (redirect_pc_e),
-        .final_redirect_pc   (final_redirect_pc),
-        .csr_mepc            (csr_mepc),
-        .csr_mtvec           (csr_mtvec),
-        .is_ecall            (is_ecall_w & valid_w),
-        .is_mret             (is_mret_w & valid_w),
+final_redirect_pc_unit frp(
+    .branch_redirect_pc    (redirect_pc_e),
+    .branch_redirect_valid (branch_valid),
 
-        .swint          (swint),
-        .trint          (trint),
-        .exint          (exint),
+    .csr_mepc              (csr_mepc),
+    .csr_mtvec             (csr_mtvec),
 
-        .daddr_exc_w    (daddr_exc_w),
-        .iaddr_exc_w    (iaddr_exc_w)
-    );
+    .trap_valid            (trap_valid),
+    .mret_valid            (mret_valid),
+
+    .final_redirect_pc     (final_redirect_pc)
+);
 
     // =========================================================
     // EX/MEM
@@ -860,7 +1073,7 @@ end
         .is_mret_e  (is_mret_e),
 
         .iaddr_exc_m   (iaddr_exc_m),
-        .iaddr_exc_e   (iaddr_exc_e),
+        .iaddr_exc_e    (iaddr_exc_e_to_m),
         .redirect_pc_m (redirect_pc_m),
         .redirect_pc_e (redirect_pc_e),
         .redirect_valid_m (redirect_valid_m),
