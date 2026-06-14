@@ -48,21 +48,29 @@ module data_mem (
 );
 
 
-`ifdef VERILATOR
-always_comb begin
-    if (dreq.valid && dreq.addr[63:32] == 32'h0004_044c) begin
-        $display(
-            "[BAD_DATA_MEM] dreq.valid=%b dreq.addr=%h dreq.size=%0d dreq.strobe=%h address=%h",
-            dreq.valid,
-            dreq.addr,
-            dreq.size,
-            dreq.strobe,
-            address
-        );
+`ifdef VERILAT
+
+always_ff @(posedge clk) begin
+    if (!rst) begin
+        if (
+            (mem_req_valid || mem_stall || dresp.data_ok) &&
+            (
+                address >= 64'h0000000080000000 && address <= 64'h0000000080001000 ||
+                dreq.addr >= 64'h0000000080000000 && dreq.addr <= 64'h0000000080001000
+            )
+        ) begin
+            $display(
+"[DMEM] addr=%h mr=%b mw=%b digit=%0d daddr_exc=%b | req_v=%b req_addr=%h size=%0d strb=%h wdata=%h | resp addr_ok=%b data_ok=%b data=%h | mem_stall=%b",
+                address, mem_read_m, mem_write_m, mem_digit_m, daddr_exc_m,
+                dreq.valid, dreq.addr, dreq.size, dreq.strobe, dreq.data,
+                dresp.addr_ok, dresp.data_ok, dresp.data,
+                mem_stall
+            );
+        end
     end
 end
-`endif
 
+`endif
 
 
     logic [2:0]  offset;

@@ -14,6 +14,7 @@ module saf_unit (
     input  logic branch_redirect_valid,
     input  logic trap_valid,
     input  logic mret_valid,
+    input  logic mdu_stall,
 
     output logic pc_stall,
     output logic if_id_stall,
@@ -27,6 +28,22 @@ module saf_unit (
     output logic mem_wb_flush
 );
 
+`ifdef VERILAT
+
+always_comb begin
+    if (mem_stall || mdu_stall || load_use_stall) begin
+        $display(
+"[SAF] mem_stall=%b mdu_stall=%b load_use_stall=%b | stall pc=%b ifid=%b idex=%b exmem=%b memwb=%b | flush ifid=%b idex=%b exmem=%b memwb=%b",
+            mem_stall, mdu_stall, load_use_stall,
+            pc_stall, if_id_stall, id_ex_stall, ex_mem_stall, mem_wb_stall,
+            if_id_flush, id_ex_flush, ex_mem_flush, mem_wb_flush
+        );
+    end
+end
+
+`endif
+
+
     logic control_redirect;
     logic commit_redirect;
 
@@ -34,15 +51,16 @@ module saf_unit (
     assign commit_redirect  = trap_valid | mret_valid;
 
     always_comb begin
-        //====================================================
-        // Stall
-        //====================================================
-        pc_stall     = mem_stall | load_use_stall;
 
-        if_id_stall  = mem_stall | load_use_stall;
-        id_ex_stall  = mem_stall;
-        ex_mem_stall = mem_stall;
-        mem_wb_stall = mem_stall;
+
+
+pc_stall     = mdu_stall | mem_stall | load_use_stall;
+
+if_id_stall  = mdu_stall | mem_stall | load_use_stall;
+id_ex_stall  = mdu_stall | mem_stall;
+
+ex_mem_stall = mdu_stall | mem_stall;
+mem_wb_stall = mem_stall;
 
         //====================================================
         // Flush

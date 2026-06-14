@@ -4,6 +4,8 @@
 `include "src/alu_adder.sv"
 `include "src/data_valid_unit.sv"
 `include "src/alu.sv"
+`include "src/alu_md_result_mux.sv"
+`include "src/muldiv_unit.sv"
 `include "src/alures_mux.sv"
 `include "src/load_use_hazard.sv"
 `include "src/branch_cmp.sv"
@@ -107,23 +109,86 @@ module datapath import common::*;(
 );
 //243294
 
-`ifdef VER
-longint dbg_cycle_swint;
-logic dbg_hit_swint;
+`ifdef VERILA
+
+longint dbg_cyc;
+int dbg_print_cnt;
+
+function automatic bit dbg_pc_window();
+    dbg_pc_window =
+        (pc_f == 64'h0000000080000018) ||
+        (pc_f == 64'h000000008000001c) ||
+        (pc_f == 64'h0000000080000020) ||
+        (pc_f == 64'h0000000080000024) ||
+        (pc_f == 64'h0000000080000028) ||
+        (pc_f == 64'h000000008000002c) ||
+        (pc_f == 64'h0000000080000030) ||
+        (valid_d && (
+            pc_d == 64'h0000000080000018 ||
+            pc_d == 64'h000000008000001c ||
+            pc_d == 64'h0000000080000020 ||
+            pc_d == 64'h0000000080000024 ||
+            pc_d == 64'h0000000080000028 ||
+            pc_d == 64'h000000008000002c ||
+            pc_d == 64'h0000000080000030
+        )) ||
+        (valid_e && (
+            pc_e == 64'h0000000080000018 ||
+            pc_e == 64'h000000008000001c ||
+            pc_e == 64'h0000000080000020 ||
+            pc_e == 64'h0000000080000024 ||
+            pc_e == 64'h0000000080000028 ||
+            pc_e == 64'h000000008000002c ||
+            pc_e == 64'h0000000080000030
+        )) ||
+        (valid_m && (
+            pc_m == 64'h0000000080000018 ||
+            pc_m == 64'h000000008000001c ||
+            pc_m == 64'h0000000080000020 ||
+            pc_m == 64'h0000000080000024 ||
+            pc_m == 64'h0000000080000028 ||
+            pc_m == 64'h000000008000002c ||
+            pc_m == 64'h0000000080000030
+        )) ||
+        (valid_w && (
+            pc_w == 64'h0000000080000018 ||
+            pc_w == 64'h000000008000001c ||
+            pc_w == 64'h0000000080000020 ||
+            pc_w == 64'h0000000080000024 ||
+            pc_w == 64'h0000000080000028 ||
+            pc_w == 64'h000000008000002c ||
+            pc_w == 64'h0000000080000030
+        ));
+endfunction
 
 always_ff @(posedge clk) begin
     if (reset) begin
-        dbg_cycle_swint <= 0;
-        dbg_hit_swint <= 1'b0;
+        dbg_cyc <= 0;
+        dbg_print_cnt <= 0;
     end else begin
-        dbg_cycle_swint <= dbg_cycle_swint + 1;
+        dbg_cyc <= dbg_cyc + 1;
 
-        if (!dbg_hit_swint && trap_valid && swint_take) begin
-            dbg_hit_swint <= 1'b1;
-            $display("[DBG_SWINT_TRAP] cycle=%0d pc_f=%h instr_f=%h instr_valid_f=%b pc_d=%h instr_d=%h valid_d=%b pc_e=%h instr_e=%h valid_e=%b pc_m=%h instr_m=%h valid_m=%b pc_w=%h instr_w=%h valid_w=%b trap_pc=%h trap_cause=%h swint_take=%b trint_take=%b exint_take=%b csr_mstatus=%h csr_mepc=%h csr_mcause=%h csr_mip=%h csr_mie=%h privil_mode=%b final_redirect_pc=%h", dbg_cycle_swint, pc_f, instr_f, instr_valid_f, pc_d, instr_d, valid_d, pc_e, instr_e, valid_e, pc_m, instr_m, valid_m, pc_w, instr_w, valid_w, trap_pc, trap_cause, swint_take, trint_take, exint_take, csr_mstatus, csr_mepc, csr_mcause, csr_mip, csr_mie, privil_mode, final_redirect_pc);
+        if (dbg_pc_window() && dbg_print_cnt < 80) begin
+            dbg_print_cnt <= dbg_print_cnt + 1;
+
+            $display(
+"[PIPE] cyc=%0d hit=%0d | F pc=%h | D v=%b pc=%h inst=%h | E v=%b pc=%h inst=%h | M v=%b pc=%h inst=%h mr=%b mw=%b addr=%h wdata=%h | W v=%b pc=%h inst=%h rd=%0d wen=%b wdata=%h | stall pc=%b ifid=%b idex=%b exmem=%b memwb=%b mem=%b mdu=%b lu=%b | dreq v=%b addr=%h strb=%h data=%h dok=%b",
+                dbg_cyc,
+                dbg_print_cnt,
+                pc_f,
+                valid_d, pc_d, instr_d,
+                valid_e, pc_e, instr_e,
+                valid_m, pc_m, instr_m, mem_read_m, mem_write_m, aluout_m, rs2_val_m,
+                valid_w, pc_w, instr_w, rd_w, regwrite_w, wb_write_data,
+                pc_stall, if_id_stall, id_ex_stall, ex_mem_stall, mem_wb_stall,
+                mem_stall, mdu_stall, load_use_stall,
+                real_dbus_req.valid, real_dbus_req.addr, real_dbus_req.strobe,
+                real_dbus_req.data, real_dbus_resp.data_ok
+            );
         end
     end
 end
+
 `endif
 
 `ifdef DEBUG
@@ -248,17 +313,7 @@ assign exception_valid_w =
         is_ecall_w
     );
 
-// ---------------------------------------------------------
-// interrupt evaluate
-//
-// Lab6 要求：
-// 1. 当前 M mode 时，需要 mstatus.MIE=1；非 M mode 默认允许
-// 2. mip[i] && mie[i]
-// 3. 本 Lab 只要求“刚收到中断信号”时 evaluate
-//
-// 所以这里用 mip_next_for_int，避免 swint/trint/exint 当拍刚来，
-// csr_mip 还没来得及在 csr_file 时序更新。
-// ---------------------------------------------------------
+
 assign interrupt_enable =
     (privil_mode != 2'b11) || csr_mstatus[3];
 
@@ -497,7 +552,9 @@ saf_unit st(
     .if_id_flush           (if_id_flush),
     .id_ex_flush           (id_ex_flush),
     .ex_mem_flush          (ex_mem_flush),
-    .mem_wb_flush          (mem_wb_flush)
+    .mem_wb_flush          (mem_wb_flush),
+
+    .mdu_stall             (mdu_stall)
 );
 
     // =========================================================
@@ -693,6 +750,7 @@ assign final_redirect_valid =
     // 2. ID
     // =========================================================
     logic [2:0]  funct3;
+    logic [6:0]  funct7;
     logic [4:0]  rs1;
     logic [4:0]  rs2;
     logic [4:0]  rd;
@@ -722,6 +780,7 @@ assign final_redirect_valid =
     assign opcode = instr_d[6:0];
     assign rd     = instr_d[11:7];
     assign funct3 = instr_d[14:12];
+    assign funct7 = instr_d[31:25];
     assign rs1    = instr_d[19:15];
     assign rs2    = instr_d[24:20];
     assign immediate = instr_d[31:20];
@@ -741,6 +800,7 @@ assign final_redirect_valid =
     );
 
     control_unit ID1(
+        .funct7        (funct7),
         .funct3        (funct3),
         .opcode        (opcode),
         .bit30         (instr_d[30]),
@@ -970,6 +1030,15 @@ end
         .alusrcb_e  (alusrcb_e),
         .srcb_e     (srcb_e)
     );
+    logic        is_mdu_e;
+    logic        mdu_req_valid;
+    logic        mdu_req_ready;
+    logic        mdu_resp_valid;
+    logic [63:0] mdu_resp_result;
+
+    logic        ex_done;
+    logic [63:0] alu_result_final_e;
+    logic        mdu_stall;
 
     alu EX2(
         .srca_e       (srca_e),
@@ -978,17 +1047,54 @@ end
         .alusign_e    (alusign_e),
         .alu_result_e (alu_result_e)
     );
+    assign is_mdu_e =
+        valid_e &&
+        (
+            aluctrl_e == 4'd10 ||
+            aluctrl_e == 4'd11 ||
+            aluctrl_e == 4'd12 ||
+            aluctrl_e == 4'd13 ||
+            aluctrl_e == 4'd14
+        );
+
+    assign mdu_req_valid = is_mdu_e && mdu_req_ready;
+
+    assign ex_done = !is_mdu_e || mdu_resp_valid;
+
+    assign mdu_stall = valid_e && !ex_done;
+
+muldiv_unit mu(
+    .clk         (clk),
+    .reset       (reset),
+
+    .req_valid   (mdu_req_valid),
+    .req_srca    (srca_e),
+    .req_srcb    (srcb_e),
+    .req_op      (aluctrl_e),
+    .req_word    (alusign_e),
+
+    .req_ready   (mdu_req_ready),
+
+    .resp_valid  (mdu_resp_valid),
+    .resp_result (mdu_resp_result)
+);
+
+assign alu_result_final_e =
+    is_mdu_e ? mdu_resp_result : final_alures;
+
+assign aluout_e = alu_result_final_e;
 
     sign32to64 EX3(
         .short_imm (alu_result_e),
         .long_imm  (long_alu_result_e)
     );
 
+    logic [63:0] final_alures;
     alures_mux EX4(
         .alusign_e          (alusign_e),
         .alu_result_e       (alu_result_e),
         .long_alu_result_e  (long_alu_result_e),
-        .final_alu_result_e (aluout_e)
+        .final_alu_result_e (final_alures)
     );
 
     assign cmp_b_e = cmpsrc_e ? imm_e : rs2_eff_e;

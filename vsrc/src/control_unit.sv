@@ -1,4 +1,5 @@
 module control_unit (
+    input  logic [6:0] funct7,
     input  logic [2:0] funct3,
     input  logic [6:0] opcode,
     input  logic       bit30,
@@ -114,15 +115,40 @@ always_comb begin
             alusrcb_d  = 2'b0;   // rs2
             regwrite_d = 1'b1;
 
-            case (funct3)
-                3'b000: aluctrl_d = bit30 ? 4'd4 : 4'd0; // sub/add
-                3'b100: aluctrl_d = 4'd1; // xor
-                3'b110: aluctrl_d = 4'd2; // or
-                3'b111: aluctrl_d = 4'd3; // and
-                3'b001: aluctrl_d = 4'd7; // sll
-                3'b010: aluctrl_d = 4'd5; // slt
-                3'b011: aluctrl_d = 4'd6; // sltu
-                3'b101: aluctrl_d = bit30 ? 4'd9 : 4'd8; // sra/srl
+            case (funct7)
+                7'b0000000:begin
+                    case (funct3)
+                        3'b000: aluctrl_d = 4'd0; // add
+                        3'b100: aluctrl_d = 4'd1; // xor
+                        3'b110: aluctrl_d = 4'd2; // or
+                        3'b111: aluctrl_d = 4'd3; // and
+                        3'b001: aluctrl_d = 4'd7; // sll
+                        3'b010: aluctrl_d = 4'd5; // slt
+                        3'b011: aluctrl_d = 4'd6; // sltu
+                        3'b101: aluctrl_d = 4'd8; // srl
+                        default: ;
+                    endcase
+                end
+
+                7'b0000001:begin
+                    case (funct3)
+                        3'b000:aluctrl_d = 4'd10;
+                        3'b100:aluctrl_d = 4'd11;
+                        3'b101:aluctrl_d = 4'd12;
+                        3'b110:aluctrl_d = 4'd13;
+                        3'b111:aluctrl_d = 4'd14;
+                        default: ;              
+                    endcase
+                end
+
+                7'b0100000:begin
+                    case (funct3)
+                        3'b000: aluctrl_d = 4'd4; // sub
+                        3'b101: aluctrl_d = 4'd9; // sra
+                        default: ;
+                    endcase
+                end
+
                 default: ;
             endcase
         end
@@ -149,10 +175,37 @@ always_comb begin
             alusrcb_d  = 2'b00;   // rs2
             regwrite_d = 1'b1;
 
-            case (funct3)
-                3'b000: aluctrl_d = bit30 ? 4'd4 : 4'd0; // subw/addw
-                3'b001: aluctrl_d = 4'd7; // sllw
-                3'b101: aluctrl_d = bit30 ? 4'd9 : 4'd8; // sraw/srlw
+
+            case (funct7)
+                7'b0000000:begin
+                    case (funct3)
+                        3'b000: aluctrl_d = 4'd0; // addw
+                        3'b001: aluctrl_d = 4'd7; // sllw
+                        3'b101: aluctrl_d = 4'd8; // srlw
+                        default: ;
+                    endcase
+                end
+
+                7'b0000001:begin
+                    case (funct3)
+                        3'b000:aluctrl_d = 4'd10;
+                        3'b100:aluctrl_d = 4'd11;
+                        3'b101:aluctrl_d = 4'd12;
+                        3'b110:aluctrl_d = 4'd13;
+                        3'b111:aluctrl_d = 4'd14;
+                        default: ;              
+                    endcase
+                end
+
+                7'b0100000:begin
+                    case (funct3)
+                        3'b000: aluctrl_d = 4'd4; // subw
+                        3'b001: aluctrl_d = 4'd7; // sllw
+                        3'b101: aluctrl_d = 4'd9; // sraw
+                        default: ;
+                    endcase
+                end
+
                 default: ;
             endcase
         end
