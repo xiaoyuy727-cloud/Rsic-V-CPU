@@ -358,6 +358,7 @@ assign exint_take =
 assign interrupt_take =
     !exception_valid_w &&
     !mret_valid &&
+    !sret_valid &&
     (exint_take || trint_take || swint_take);
 
 // ---------------------------------------------------------
