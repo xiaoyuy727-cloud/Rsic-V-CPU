@@ -18,6 +18,7 @@ module control_unit (
     output logic       csrwrite_d,
     output logic       is_ecall_d,
     output logic       is_mret_d,
+    output logic       is_sret_d,
 
     output logic       cmpsrc_d,
     output logic [1:0] is_baj_d,
@@ -38,6 +39,7 @@ always_comb begin
     // default values
     is_ecall_d = 1'b0;
     is_mret_d  = 1'b0;
+    is_sret_d  = 1'b0;
     alusign_d    = 1'b0;
     aluctrl_d    = 4'd0;
     alusrca_d    = 2'd0;
@@ -66,6 +68,7 @@ always_comb begin
 
                     case(immediate)
                         12'h000:is_ecall_d=1'b1;
+                        12'h102:is_sret_d=1'b1;
                         12'h302:is_mret_d=1'b1;
                         default:;
                     endcase

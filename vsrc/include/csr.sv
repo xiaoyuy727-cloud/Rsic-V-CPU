@@ -33,11 +33,38 @@ package csr_pkg;
   parameter u12 CSR_SIP = 12'h144;
 
   parameter u64 MSTATUS_MASK = 64'h7e79bb;
-  parameter u64 SSTATUS_MASK = 64'h800000030001e000;
   parameter u64 MIP_MASK = 64'h333;
   parameter u64 MTVEC_MASK = ~(64'h2);
-  parameter u64 MEDELEG_MASK = 64'h0;
-  parameter u64 MIDELEG_MASK = 64'h0;
+
+parameter u64 SSTATUS_MASK =
+    (64'h1 << 1) |   // SIE
+    (64'h1 << 5) |   // SPIE
+    (64'h1 << 8);    // SPP
+
+parameter u64 S_INT_MASK =
+    (64'h1 << 1) |   // SSIP
+    (64'h1 << 5) |   // STIP
+    (64'h1 << 9);    // SEIP
+
+parameter u64 MEDELEG_MASK =
+    (64'h1 << 0)  |  // instruction address misaligned
+    (64'h1 << 1)  |  // instruction access fault
+    (64'h1 << 2)  |  // illegal instruction
+    (64'h1 << 3)  |  // breakpoint
+    (64'h1 << 4)  |  // load address misaligned
+    (64'h1 << 5)  |  // load access fault
+    (64'h1 << 6)  |  // store address misaligned
+    (64'h1 << 7)  |  // store access fault
+    (64'h1 << 8)  |  // ecall from U
+    (64'h1 << 9)  |  // ecall from S
+    (64'h1 << 12) |  // instruction page fault
+    (64'h1 << 13) |  // load page fault
+    (64'h1 << 15);   // store page fault
+
+parameter u64 MIDELEG_MASK =
+    (64'h1 << 1) |   // supervisor software interrupt
+    (64'h1 << 5) |   // supervisor timer interrupt
+    (64'h1 << 9);    // supervisor external interrupt
 
   typedef struct packed {
     u1 sd;

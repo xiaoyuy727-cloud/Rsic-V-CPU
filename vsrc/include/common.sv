@@ -240,5 +240,10 @@ typedef struct packed {
     word_t data;        // the data from AXI bus
 } cbus_resp_t;
 
+typedef enum logic [1:0] {
+    PRIV_U = 2'b00,
+    PRIV_S = 2'b01,
+    PRIV_M = 2'b11
+} priv_mode_t;
 endpackage
 `endif

@@ -93,6 +93,9 @@ module id_ex_reg (
     output logic is_mret_e,
     output logic is_ecall_e,
 
+    input logic is_sret_d,
+    output logic is_sret_e,
+
     input logic iaddr_exc_d,
     output logic iaddr_exc_e,
 
@@ -163,6 +166,7 @@ always_ff @(posedge clk) begin
         csrwrite_e    <= 1'b0;
         is_ecall_e    <= 1'b0;
         is_mret_e    <= 1'b0;
+        is_sret_e    <= 1'b0;
         iaddr_exc_e   <= 1'b0;
     end
     else if (flush) begin
@@ -192,6 +196,7 @@ always_ff @(posedge clk) begin
         csrwrite_e    <= 1'b0;
         is_ecall_e    <= 1'b0;
         is_mret_e    <= 1'b0;
+        is_sret_e    <= 1'b0;
         iaddr_exc_e   <= 1'b0;
     end
     else if (!id_ex_stall) begin
@@ -220,6 +225,7 @@ always_ff @(posedge clk) begin
         regwrite_e    <= regwrite_d;
         csrwrite_e    <=csrwrite_d;
         is_mret_e     <= is_mret_d;
+        is_sret_e     <= is_sret_d;
         is_ecall_e    <= is_ecall_d;
         iaddr_exc_e   <= iaddr_exc_d;
     end

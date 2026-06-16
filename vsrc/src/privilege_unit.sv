@@ -8,7 +8,7 @@
 // mret:
 //     mode <- mpp
 //
-module privilege_unit (
+module privilege_unit import common ::*;(
     input  logic clk,
     input  logic rst,
 
@@ -16,13 +16,13 @@ module privilege_unit (
     input  logic mret_valid,
 
     input  logic [1:0] mpp,
+    input logic [1:0] trap_target_priv,
+    input logic       sret_valid,
+    input logic       spp,
 
     output logic [1:0] privil_mode
 );
 
-    localparam logic [1:0] PRIV_U = 2'b00;
-    localparam logic [1:0] PRIV_S = 2'b01;
-    localparam logic [1:0] PRIV_M = 2'b11;
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -30,10 +30,13 @@ module privilege_unit (
         end
         else begin
             if (trap_valid) begin
-                privil_mode <= PRIV_M;
+                privil_mode <= trap_target_priv;
             end
             else if (mret_valid) begin
                 privil_mode <= mpp;
+            end
+            else if (sret_valid) begin
+                privil_mode <= spp ? PRIV_S : PRIV_U;
             end
         end
     end

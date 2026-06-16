@@ -6,6 +6,7 @@
 `include "src/alu.sv"
 `include "src/alu_md_result_mux.sv"
 `include "src/muldiv_unit.sv"
+`include "src/trap_router.sv"
 `include "src/alures_mux.sv"
 `include "src/load_use_hazard.sv"
 `include "src/branch_cmp.sv"
@@ -103,6 +104,17 @@ module datapath import common::*;(
     output logic [63:0] csr_mcycle,
     output logic [63:0] csr_mhartid,
     output logic [63:0] csr_satp,
+
+    output logic [63:0] csr_medeleg,
+    output logic [63:0] csr_mideleg,
+    output logic [63:0] csr_stvec,
+    output logic [63:0] csr_sscratch,
+    output logic [63:0] csr_sepc,
+    output logic [63:0] csr_scause,
+    output logic [63:0] csr_stval,
+    output logic [63:0] csr_sstatus,
+    output logic [63:0] csr_sie,
+    output logic [63:0] csr_sip,
 
     output logic [1:0] privil_mode    
 
@@ -281,6 +293,7 @@ assign iaddr_exc_e_to_m =
 // unified trap / redirect events
 // =========================================================
 logic        mret_valid;
+logic        sret_valid;
 logic        exception_valid_w;
 
 logic        interrupt_enable;
@@ -301,6 +314,7 @@ logic        branch_valid;
 // mret
 // ---------------------------------------------------------
 assign mret_valid = valid_w && is_mret_w;
+assign sret_valid = valid_w && is_sret_w;
 
 // ---------------------------------------------------------
 // sync exception
@@ -349,6 +363,7 @@ assign interrupt_take =
 // ---------------------------------------------------------
 // final trap
 // ---------------------------------------------------------
+// trap_valid 本周期是否trap entry
 assign trap_valid        = exception_valid_w || interrupt_take;
 assign trap_is_interrupt = interrupt_take;
 
@@ -422,7 +437,17 @@ always_comb begin
     end
 end
 
+    logic [1:0] trap_target_priv;
 
+    trap_router u_trap_router (
+        .trap_valid       (trap_valid),
+        .trap_is_interrupt(trap_is_interrupt),
+        .trap_cause       (trap_cause),
+        .current_priv     (privil_mode),
+        .csr_medeleg      (csr_medeleg),
+        .csr_mideleg      (csr_mideleg),
+        .trap_target_priv (trap_target_priv)
+    );
 
     // exception & interruption
     logic iaddr_exc_f;
@@ -554,7 +579,8 @@ saf_unit st(
     .ex_mem_flush          (ex_mem_flush),
     .mem_wb_flush          (mem_wb_flush),
 
-    .mdu_stall             (mdu_stall)
+    .mdu_stall             (mdu_stall),
+    .sret_valid            (sret_valid)
 );
 
     // =========================================================
@@ -639,7 +665,20 @@ csr_file cf(
     .csr_mcycle    (csr_mcycle),
     .csr_mhartid   (csr_mhartid),
     .csr_satp      (csr_satp),
-    .csr_mstatus   (csr_mstatus)
+    .csr_mstatus   (csr_mstatus),
+    .csr_medeleg    (csr_medeleg),
+    .csr_mideleg    (csr_mideleg),
+    .csr_stvec      (csr_stvec),
+    .csr_sscratch   (csr_sscratch),
+    .csr_sepc       (csr_sepc),
+    .csr_scause     (csr_scause),
+    .csr_stval      (csr_stval),
+    .csr_sstatus    (csr_sstatus),
+    .csr_sie        (csr_sie),
+    .csr_sip        (csr_sip),
+
+    .trap_target_priv    (trap_target_priv),
+    .sret_valid     (sret_valid)
 );
 
 
@@ -659,6 +698,12 @@ csr_file cf(
     logic is_mret_m;
     logic is_mret_w;
 
+    logic is_sret_f;
+    logic is_sret_d;
+    logic is_sret_e;
+    logic is_sret_m;
+    logic is_sret_w;
+
 
 
 privilege_unit pu(
@@ -669,7 +714,11 @@ privilege_unit pu(
     .mret_valid(mret_valid),
 
     .mpp(csr_mstatus[12:11]),
-    .privil_mode(privil_mode)
+    .privil_mode(privil_mode),
+
+    .spp    (csr_mstatus[8]),
+    .sret_valid     (sret_valid),
+    .trap_target_priv   (trap_target_priv)
 );
 
 
@@ -819,6 +868,7 @@ assign final_redirect_valid =
         .csrwrite_d    (csrwrite_d),
         .is_ecall_d     (is_ecall_d),
         .is_mret_d      (is_mret_d),
+        .is_sret_d      (is_sret_d),
 
         .cmpsrc_d      (cmpsrc_d),
         .is_baj_d      (is_baj_d),
@@ -939,6 +989,9 @@ assign final_redirect_valid =
         .is_mret_d  (is_mret_d),
         .is_ecall_e (is_ecall_e),
         .is_mret_e  (is_mret_e),
+
+        .is_sret_d  (is_sret_d),
+        .is_sret_e  (is_sret_e),
 
         .csr_num_e  (csr_num_e),
         .csr_value_e(csr_value_e),
@@ -1127,8 +1180,13 @@ final_redirect_pc_unit frp(
     .csr_mepc              (csr_mepc),
     .csr_mtvec             (csr_mtvec),
 
+    .csr_sepc              (csr_sepc),
+    .csr_stvec             (csr_stvec),
+
     .trap_valid            (trap_valid),
     .mret_valid            (mret_valid),
+    .sret_valid            (sret_valid),
+    .trap_target_priv      (trap_target_priv),
 
     .final_redirect_pc     (final_redirect_pc)
 );
@@ -1177,6 +1235,9 @@ final_redirect_pc_unit frp(
         .is_mret_m  (is_mret_m),
         .is_ecall_e (is_ecall_e),
         .is_mret_e  (is_mret_e),
+
+        .is_sret_e  (is_sret_e),
+        .is_sret_m  (is_sret_m),
 
         .iaddr_exc_m   (iaddr_exc_m),
         .iaddr_exc_e    (iaddr_exc_e_to_m),
@@ -1254,6 +1315,9 @@ final_redirect_pc_unit frp(
         .is_mret_m  (is_mret_m),
         .is_ecall_w (is_ecall_w),
         .is_mret_w (is_mret_w),
+
+        .is_sret_m  (is_sret_m),
+        .is_sret_w (is_sret_w),
 
         .csr_num_m  (csr_num_m),
         .csr_value_m (csr_value_m),

@@ -19,15 +19,27 @@ module final_redirect_pc_unit(
     input  logic        trap_valid,
     input  logic        mret_valid,
 
+    input logic [1:0]  trap_target_priv,
+    
+    input logic [63:0] csr_stvec,
+    input logic [63:0] csr_sepc,
+    input logic        sret_valid,
+
     output logic [63:0] final_redirect_pc
 );
 
     always_comb begin
         if (trap_valid) begin
-            final_redirect_pc = csr_mtvec;
+            unique case (trap_target_priv)
+                PRIV_S:  final_redirect_pc = csr_stvec;
+                default: final_redirect_pc = csr_mtvec;
+            endcase
         end
         else if (mret_valid) begin
             final_redirect_pc = csr_mepc;
+        end
+        else if (sret_valid) begin
+            final_redirect_pc = csr_sepc;
         end
         else if (branch_redirect_valid) begin
             final_redirect_pc = branch_redirect_pc;

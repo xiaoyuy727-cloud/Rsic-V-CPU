@@ -15,6 +15,7 @@ module saf_unit (
     input  logic trap_valid,
     input  logic mret_valid,
     input  logic mdu_stall,
+    input  logic sret_valid,
 
     output logic pc_stall,
     output logic if_id_stall,
@@ -47,8 +48,8 @@ end
     logic control_redirect;
     logic commit_redirect;
 
-    assign control_redirect = branch_redirect_valid | trap_valid | mret_valid;
-    assign commit_redirect  = trap_valid | mret_valid;
+    assign control_redirect = branch_redirect_valid | trap_valid | mret_valid | sret_valid;
+    assign commit_redirect  = trap_valid | mret_valid | sret_valid;
 
     always_comb begin
 

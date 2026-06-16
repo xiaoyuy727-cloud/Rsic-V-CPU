@@ -61,6 +61,8 @@ module mem_wb_reg (
     input logic is_mret_m,
     output logic is_mret_w,
     output logic is_ecall_w,
+    input logic is_sret_m,
+    output logic is_sret_w,
 
     output logic [11:0]      csr_num_w,
     output logic [63:0]      csr_value_w,
@@ -120,6 +122,7 @@ end
             csrwrite_w       <=1'b0;
             is_ecall_w       <= 1'b0;
             is_mret_w        <= 1'b0;
+            is_sret_w        <= 1'b0;
             iaddr_exc_w      <= 1'b0;
             redirect_pc_w    <= 64'd0;
             redirect_valid_w <= 1'b0;
@@ -141,6 +144,7 @@ end
             csrwrite_w       <= csrwrite_m;
             is_ecall_w       <= is_ecall_m;
             is_mret_w        <= is_mret_m;
+            is_sret_w        <= is_sret_m;
             iaddr_exc_w      <= iaddr_exc_m;
             redirect_pc_w    <= redirect_pc_m;
             redirect_valid_w <= redirect_valid_m;

@@ -76,6 +76,17 @@ module core import common::*;(
     logic [63:0] csr_mhartid;
     logic [63:0] csr_satp; 
 
+	logic [63:0] csr_medeleg;
+	logic [63:0] csr_mideleg;
+	logic [63:0] csr_stvec;
+	logic [63:0] csr_sscratch;
+	logic [63:0] csr_sepc;
+	logic [63:0] csr_scause;
+	logic [63:0] csr_stval;
+	logic [63:0] csr_sstatus;
+	logic [63:0] csr_sie;
+	logic [63:0] csr_sip;
+
 	datapath u_datapath (
 		.clk         (clk),
 		.reset       (reset),
@@ -140,6 +151,17 @@ module core import common::*;(
 		.csr_mcycle	 (csr_mcycle),
 		.csr_mhartid (csr_mhartid),
 		.csr_satp	 (csr_satp),
+
+		.csr_medeleg	(csr_medeleg),
+		.csr_mideleg	(csr_mideleg),
+		.csr_stvec		(csr_stvec),
+		.csr_sscratch	(csr_sscratch),
+		.csr_sepc		(csr_sepc),
+		.csr_scause		(csr_scause),
+		.csr_stval		(csr_stval),
+		.csr_sstatus	(csr_sstatus),
+		.csr_sie		(csr_sie),
+		.csr_sip		(csr_sip),		
 
 		.privil_mode   (privil_mode),
 
