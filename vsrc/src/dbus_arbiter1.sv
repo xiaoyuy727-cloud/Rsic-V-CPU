@@ -1,7 +1,6 @@
 `ifdef VERILATOR
 `include "include/common.sv"
 `endif
-//原来的dbusarbiter，先保留
 
 module dbus_arbiter import common::*; #(
     parameter int NUM_INPUTS = 2,
@@ -9,6 +8,7 @@ module dbus_arbiter import common::*; #(
 ) (
     input  logic clk,
     input  logic reset,
+    input  logic cancel,
 
     input  dbus_req_t  [MAX_INDEX:0] reqs,
     output dbus_resp_t [MAX_INDEX:0] resps,
@@ -16,153 +16,146 @@ module dbus_arbiter import common::*; #(
     output dbus_req_t  final_req,
     input  dbus_resp_t final_resp
 );
-`ifdef DEBUG
- always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (busy && final_resp.addr_ok && final_resp.data_ok) begin
-            $display("[DBUS_DONE] index=%0d accepted=%b final_addr=%h strobe=%h data=%h",
-                     index, req_accepted, final_req.addr, final_req.strobe, final_req.data);
-        end
 
-        if (!busy && selected_req.valid) begin
-            $display("[DBUS_ACCEPT] select=%0d addr=%h strobe=%h data=%h req0_valid=%b req1_valid=%b",
-                     select, selected_req.addr, selected_req.strobe, selected_req.data,
-                     reqs[0].valid, reqs[1].valid);
-        end
-
- if (busy && final_resp.addr_ok && final_resp.data_ok) begin
-    $display("[DBUS_SAME_CYCLE_DONE] index=%0d accepted=%b will_clear=%b addr=%h strobe=%h data=%h",
-             index, req_accepted,
-             req_accepted && final_resp.data_ok,
-             final_req.addr, final_req.strobe, final_req.data);
- end
-
-    end
- end
-
- always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (busy && final_resp.addr_ok && final_resp.data_ok && !req_accepted) begin
-            $display("[BUG_CONFIRM] addr_ok and data_ok same cycle while req_accepted=0, addr=%h strobe=%h data=%h",
-                     final_req.addr, final_req.strobe, final_req.data);
-        end
-
-        if (busy && req_accepted && !final_resp.data_ok) begin
-            $display("[STALE_BUSY] accepted=1 but data_ok already missed, addr=%h strobe=%h data=%h",
-                     final_req.addr, final_req.strobe, final_req.data);
-        end
-    end
- end
-`endif
-
-
-
+    // ======================================================
+    // 基础仲裁状态
+    // ======================================================
     logic busy;
-    logic req_accepted;
-
-    int index;
-    int select;
+    int   index;
 
     dbus_req_t saved_req;
-    dbus_req_t selected_req;
 
-    assign final_req = busy ? saved_req : '0;
-    assign selected_req = reqs[select];
+    logic has_req;
+    int   selected;
 
+    logic done_now;
+
+    assign done_now = !cancel && busy && final_resp.data_ok;
+
+    // ======================================================
+    // ✨ NEW: request type tagging（IMEM / DMEM归属）
+    // ======================================================
+    typedef enum logic {
+        REQ_IFETCH = 1'b0,
+        REQ_LOAD   = 1'b1
+    } req_type_t;
+
+    req_type_t saved_req_type;
+
+    // ======================================================
+    // ✨ NEW: exception shadow metadata（不进bus！）
+    // ======================================================
+    logic        saved_ex_valid;
+    logic [3:0]  saved_ex_cause;
+    logic [63:0] saved_ex_addr;
+
+    // ======================================================
+    // 选择请求
+    // ======================================================
     always_comb begin
-        select = 0;
-        for (int i = 0; i < NUM_INPUTS; i++) begin
-            if (reqs[i].valid) begin
-                select = i;
-                break;
+        has_req  = 1'b0;
+        selected = 0;
+
+        if (!cancel) begin
+            for (int i = 0; i < NUM_INPUTS; i++) begin
+                if (!has_req && reqs[i].valid) begin
+                    has_req  = 1'b1;
+                    selected = i;
+                end
             end
         end
     end
 
+    // ======================================================
+    // final request output
+    // ======================================================
+    always_comb begin
+        final_req = '0;
+
+        if (!cancel && busy) begin
+            final_req = saved_req;
+        end
+    end
+
+    // ======================================================
+    // response routing
+    // ======================================================
     always_comb begin
         resps = '0;
 
-        if (busy && req_accepted) begin
-        //if (busy && (req_accepted || final_resp.addr_ok)) begin
-
-            for (int i = 0; i < NUM_INPUTS; i++) begin
-                if (index == i) begin
-                    resps[i] = final_resp;
-                end
-            end
+        if (done_now) begin
+            resps[index] = final_resp;
         end
     end
 
+    // ======================================================
+    // FSM
+    // ======================================================
     always_ff @(posedge clk) begin
         if (reset) begin
-            busy         <= 1'b0;
-            req_accepted <= 1'b0;
-            index        <= 0;
-            saved_req    <= '0;
+            busy <= 1'b0;
+            index <= 0;
+            saved_req <= '0;
+
+            saved_req_type <= REQ_LOAD;
+
+            saved_ex_valid <= 0;
+            saved_ex_cause <= 0;
+            saved_ex_addr  <= 0;
         end
+
+        else if (cancel) begin
+            busy <= 1'b0;
+            index <= 0;
+            saved_req <= '0;
+
+            saved_ex_valid <= 0;
+            saved_ex_cause <= 0;
+            saved_ex_addr  <= 0;
+        end
+
         else begin
-            if (busy) begin
-                if (final_resp.addr_ok) begin
-                    req_accepted <= 1'b1;
-                end
 
-                if (req_accepted && final_resp.data_ok) begin
-                //if (final_resp.data_ok && (req_accepted || final_resp.addr_ok)) begin
-                //if ((req_accepted || final_resp.addr_ok) && final_resp.data_ok) begin
-                    busy         <= 1'b0;
-                    req_accepted <= 1'b0;
-                    saved_req    <= '0;
+            // ==================================================
+            // busy state
+            // ==================================================
+            if (busy) begin
+                if (final_resp.data_ok) begin
+                    busy <= 1'b0;
+                    index <= 0;
+                    saved_req <= '0;
+
+                    saved_ex_valid <= 0;
                 end
             end
+
+            // ==================================================
+            // accept new request
+            // ==================================================
             else begin
-                if (selected_req.valid) begin
-                    busy         <= 1'b1;
-                    req_accepted <= 1'b0;
-                    index        <= select;
-                    saved_req    <= selected_req;
+                if (has_req) begin
+                    busy <= 1'b1;
+                    index <= selected;
+                    saved_req <= reqs[selected];
+
+                    // ==================================================
+                    // ✨ NEW: tag request source (IMEM / DMEM)
+                    // ==================================================
+                    if (selected == 0)
+                        saved_req_type <= REQ_IFETCH;  // IMEM
+                    else
+                        saved_req_type <= REQ_LOAD;    // DMEM
+
+                    // ==================================================
+                    // ✨ NEW: bind exception shadow (from MMU later)
+                    // ==================================================
+                    saved_ex_valid <= 1'b0;
+                    saved_ex_cause <= 4'b0;
+                    saved_ex_addr  <= reqs[selected].addr;
                 end
             end
+
         end
     end
-
-
-`ifdef VERILATOR
- always_ff @(posedge clk) begin
-    if (!reset) begin
-        //if (busy || final_resp.addr_ok || final_resp.data_ok) begin
-            $display("[DBUS_STATE] busy=%b index=%0d accepted=%b final_valid=%b final_addr=%h addr_ok=%b data_ok=%b resp_data=%h req=%h",
-                     busy, index, req_accepted,
-                     final_req.valid, final_req.addr,
-                     final_resp.addr_ok, final_resp.data_ok, final_resp.data , saved_req);
-        //end
-    end
- end
-`endif
-
-`ifdef DEBUG
- always_ff @(posedge clk) begin
-    if (!reset) begin
-        if (busy || final_resp.addr_ok || final_resp.data_ok) begin
-            $display("[DBUS_STATE] busy=%b index=%0d accepted=%b final_valid=%b final_addr=%h addr_ok=%b data_ok=%b resp_data=%h",
-                     busy, index, req_accepted,
-                     final_req.valid, final_req.addr,
-                     final_resp.addr_ok, final_resp.data_ok, final_resp.data);
-        end
-    end
- end
-
-
-    always_ff @(posedge clk) begin
-        if (!reset) begin
-            if (busy) begin
-                $display("[DBUS_ARB] busy=%b accepted=%b index=%0d final_addr=%h size=%0d strobe=%h final_data_ok=%b final_data=%h",
-                         busy, req_accepted, index,
-                         final_req.addr, final_req.size, final_req.strobe,
-                         final_resp.data_ok, final_resp.data);
-            end
-        end
-    end
-`endif
-
 
 endmodule
