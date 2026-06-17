@@ -158,12 +158,7 @@ module mmu import common::*;(
             pte        <= 64'b0;
             paddr      <= 64'b0;
 
-`ifdef DEBUG
-            $display("[MMU_FLUSH] cur=%0d cpu_valid=%b cpu_addr=%h saved_valid=%b saved_addr=%h priv=%0d satp=%h",
-                     cur, cpu_req.valid, cpu_req.addr,
-                     saved_req.valid, saved_req.addr,
-                     privil_mode, satp);
-`endif
+
         end
         else begin
             case (cur)
@@ -187,17 +182,7 @@ module mmu import common::*;(
                             cur   <= REQ_P;
                         end
 
-`ifdef DEBUG
-                        $display("[MMU_ACCEPT] cpu_addr=%h valid=%b strobe=%h data=%h translate=%b priv=%0d satp=%h root_addr=%h",
-                                 cpu_req.addr,
-                                 cpu_req.valid,
-                                 cpu_req.strobe,
-                                 cpu_req.data,
-                                 translate,
-                                 privil_mode,
-                                 satp,
-                                 {8'b0, satp[43:0], 12'b0});
-`endif
+
                     end
                 end
 
@@ -219,15 +204,7 @@ module mmu import common::*;(
                             pt_addr    <= 64'b0;
                             paddr      <= 64'b0;
 
-`ifdef DEBUG
-                            $display("[MMU_BAD_L2_PTE] vaddr=%h pte_addr=%h pte=%h satp=%h root_addr=%h vpn2=%h",
-                                     saved_req.addr,
-                                     root_addr + ({55'b0, vpn2} << 3),
-                                     mem_resp.data,
-                                     satp,
-                                     root_addr,
-                                     vpn2);
-`endif
+
                         end
                         else if (pte_leaf) begin
                             // Sv39 gigapage leaf at level 2.
@@ -239,23 +216,13 @@ module mmu import common::*;(
                             };
                             cur <= REQ_P;
 
-`ifdef DEBUG
-                            $display("[MMU_L2_LEAF] vaddr=%h pte=%h paddr=%h",
-                                     saved_req.addr,
-                                     mem_resp.data,
-                                     {8'b0, mem_resp.data[53:28], saved_req.addr[29:0]});
-`endif
+
                         end
                         else begin
                             pt_addr <= {8'b0, mem_resp.data[53:10], 12'b0};
                             cur     <= REQ_1;
 
-`ifdef DEBUG
-                            $display("[MMU_L2_DONE] vaddr=%h pte=%h next_pt=%h",
-                                     saved_req.addr,
-                                     mem_resp.data,
-                                     {8'b0, mem_resp.data[53:10], 12'b0});
-`endif
+
                         end
                     end
                 end
@@ -275,14 +242,7 @@ module mmu import common::*;(
                             pt_addr    <= 64'b0;
                             paddr      <= 64'b0;
 
-`ifdef DEBUG
-                            $display("[MMU_BAD_L1_PTE] vaddr=%h pte_addr=%h pte=%h pt_addr=%h vpn1=%h",
-                                     saved_req.addr,
-                                     pt_addr + ({55'b0, vpn1} << 3),
-                                     mem_resp.data,
-                                     pt_addr,
-                                     vpn1);
-`endif
+
                         end
                         else if (pte_leaf) begin
                             // Sv39 megapage leaf at level 1.
@@ -293,23 +253,13 @@ module mmu import common::*;(
                             };
                             cur <= REQ_P;
 
-`ifdef DEBUG
-                            $display("[MMU_L1_LEAF] vaddr=%h pte=%h paddr=%h",
-                                     saved_req.addr,
-                                     mem_resp.data,
-                                     {8'b0, mem_resp.data[53:19], saved_req.addr[20:0]});
-`endif
+
                         end
                         else begin
                             pt_addr <= {8'b0, mem_resp.data[53:10], 12'b0};
                             cur     <= REQ_0;
 
-`ifdef DEBUG
-                            $display("[MMU_L1_DONE] vaddr=%h pte=%h next_pt=%h",
-                                     saved_req.addr,
-                                     mem_resp.data,
-                                     {8'b0, mem_resp.data[53:10], 12'b0});
-`endif
+
                         end
                     end
                 end
@@ -328,31 +278,13 @@ module mmu import common::*;(
                             saved_resp <= '0;
                             paddr      <= 64'b0;
 
-`ifdef DEBUG
-                            $display("[MMU_BAD_L0_PTE] vaddr=%h pte_addr=%h pte=%h pt_addr=%h vpn0=%h invalid=%b leaf=%b",
-                                     saved_req.addr,
-                                     pt_addr + ({55'b0, vpn0} << 3),
-                                     mem_resp.data,
-                                     pt_addr,
-                                     vpn0,
-                                     pte_invalid,
-                                     pte_leaf);
-`endif
+
                         end
                         else begin
                             paddr <= {8'b0, mem_resp.data[53:10], saved_req.addr[11:0]};
                             cur   <= REQ_P;
 
-`ifdef DEBUG
-                            $display("[MMU_L0_DONE] vaddr=%h pte=%h pte_ppn=%h final_paddr=%h pt_addr=%h vpn0=%h req_pte_addr=%h",
-                                     saved_req.addr,
-                                     mem_resp.data,
-                                     mem_resp.data[53:10],
-                                     {8'b0, mem_resp.data[53:10], saved_req.addr[11:0]},
-                                     pt_addr,
-                                     vpn0,
-                                     pt_addr + ({55'b0, vpn0} << 3));
-`endif
+
                         end
                     end
                 end
@@ -366,23 +298,12 @@ module mmu import common::*;(
                         saved_resp <= mem_resp;
                         cur        <= RESP;
 
-`ifdef DEBUG
-                        $display("[MMU_MEM_DONE] saved_vaddr=%h paddr=%h resp_data=%h",
-                                 saved_req.addr, paddr, mem_resp.data);
-`endif
+
                     end
                 end
 
                 RESP: begin
-`ifdef DEBUG
-                    if (cpu_req.valid) begin
-                        $display("[MMU_RESP_BLOCK_NEW_REQ] resp_for=%h resp_data=%h blocked_cpu_addr=%h",
-                                 saved_req.addr, saved_resp.data, cpu_req.addr);
-                    end
 
-                    $display("[MMU_CPU_RESP] saved_addr=%h data_ok=%b data=%h",
-                             saved_req.addr, saved_resp.data_ok, saved_resp.data);
-`endif
 
                     saved_req  <= '0;
                     saved_resp <= '0;
@@ -403,36 +324,6 @@ module mmu import common::*;(
         end
     end
 
-`ifdef DEBUG
-    always_ff @(posedge clk) begin
-        if (!reset) begin
-            if (cpu_req.valid || mem_req.valid || mem_resp.data_ok || cpu_resp.data_ok || flush) begin
-                $display("[MMU_STATE] cur=%0d flush=%b cpu_valid=%b cpu_addr=%h saved_valid=%b saved_addr=%h paddr=%h mem_valid=%b mem_addr=%h mem_strobe=%h mem_data=%h mem_data_ok=%b mem_data_resp=%h cpu_data_ok=%b cpu_data=%h priv=%0d satp=%h",
-                         cur,
-                         flush,
-                         cpu_req.valid,
-                         cpu_req.addr,
-                         saved_req.valid,
-                         saved_req.addr,
-                         paddr,
-                         mem_req.valid,
-                         mem_req.addr,
-                         mem_req.strobe,
-                         mem_req.data,
-                         mem_resp.data_ok,
-                         mem_resp.data,
-                         cpu_resp.data_ok,
-                         cpu_resp.data,
-                         privil_mode,
-                         satp);
-            end
 
-            if (flush) begin
-                $display("[MMU_FLUSH_CHECK] flush=%b cur=%0d saved_addr=%h cpu_addr=%h priv=%0d satp=%h",
-                         flush, cur, saved_req.addr, cpu_req.addr, privil_mode, satp);
-            end
-        end
-    end
-`endif
 
 endmodule
