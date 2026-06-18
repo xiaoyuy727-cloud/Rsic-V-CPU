@@ -12,6 +12,7 @@ module dbus_arbiter import common::*; #(
 
     input  dbus_req_t  [MAX_INDEX:0] reqs,
     output dbus_resp_t [MAX_INDEX:0] resps,
+    output access_type_t access_type,
 
     output dbus_req_t  final_req,
     input  dbus_resp_t final_resp
@@ -29,6 +30,13 @@ module dbus_arbiter import common::*; #(
 
     // cancel 当拍，旧事务无效，不能完成、不能回 resp
     assign done_now = !cancel && busy && final_resp.data_ok;
+
+    // ---- 当前活跃请求的访问类型 ----
+    // reqs[1] = instr fetch, reqs[0] = data access
+    assign access_type =
+        (!busy)         ? FETCH :
+        (index == 1)    ? FETCH :
+        (|saved_req.strobe) ? STORE : LOAD;
 
     //========================================================
     // 从输入请求中选择一个

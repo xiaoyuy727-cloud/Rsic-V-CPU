@@ -120,8 +120,9 @@ module ibus_to_dbus import common::*;(
         !cancel &&
         (hit ? 1'b1 : dresp.addr_ok);
 
+    // cancel 时强制 data_ok=1，让 IF 从等待中退出（遇到 page fault 等场景）
     assign iresp.data_ok =
-        !cancel &&
+        cancel ? 1'b1 :
         (hit ? 1'b1 : (dresp.data_ok && miss_pending));
 
     assign iresp.data =

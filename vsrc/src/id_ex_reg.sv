@@ -98,6 +98,8 @@ module id_ex_reg (
 
     input logic iaddr_exc_d,
     output logic iaddr_exc_e,
+    input logic instr_page_fault_d,
+    output logic instr_page_fault_e,
 
     output logic [11:0]      csr_num_e,
     output logic [63:0]      csr_value_e,
@@ -168,6 +170,7 @@ always_ff @(posedge clk) begin
         is_mret_e    <= 1'b0;
         is_sret_e    <= 1'b0;
         iaddr_exc_e   <= 1'b0;
+        instr_page_fault_e <= 1'b0;
     end
     else if (flush) begin
         csr_operand_e <= 64'b0;
@@ -228,6 +231,7 @@ always_ff @(posedge clk) begin
         is_sret_e     <= is_sret_d;
         is_ecall_e    <= is_ecall_d;
         iaddr_exc_e   <= iaddr_exc_d;
+        instr_page_fault_e <= instr_page_fault_d;
     end
 end
 

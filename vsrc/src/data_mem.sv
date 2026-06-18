@@ -39,6 +39,7 @@ module data_mem (
     input  logic [1:0]  mem_digit_m,    // 0:8bit, 1:16bit, 2:32bit, 3:64bit
     input  logic        mem_sign_m,     // 1:零扩展, 0:符号扩展
     input  logic        daddr_exc_m,
+    input  logic        cancel,         // 外部取消，强制释放 stall
 
     input  dbus_resp_t  dresp,
     output dbus_req_t   dreq,
@@ -82,7 +83,8 @@ end
     assign mem_req_valid = valid_m & (mem_read_m | mem_write_m ) & (~daddr_exc_m);
 
     // 只有当前 M 级是有效访存指令，且 data_ok 还没到时，才 stall
-    assign mem_stall = mem_req_valid & (~dresp.data_ok);
+    // cancel 时强制释放，防止 page fault 死锁
+    assign mem_stall = !cancel && mem_req_valid & (~dresp.data_ok);
 
     // 把返回的 64bit 数据按地址低 3 位右移到最低位
     assign shifted_rdata = dresp.data >> (offset * 8);

@@ -14,8 +14,31 @@ module mmu import common::*;(
     input  dbus_resp_t mem_resp,
 
     input  logic [1:0]  privil_mode,
-    input  logic [63:0] satp
+    input  logic [63:0] satp,
+    input  access_type_t access_type,
+
+    output logic        page_fault,
+    output logic [63:0] fault_addr,
+    output logic [3:0]  fault_cause
 );
+
+    typedef struct packed {
+        logic valid;
+
+        logic [26:0] vpn;
+        logic [43:0] ppn;
+
+        logic [1:0] page_level;
+            // 0 = 4KB
+            // 1 = 2MB
+            // 2 = 1GB
+
+        logic r;
+        logic w;
+        logic x;
+        logic u;
+
+    } tlb_entry_t;
 
     typedef enum logic [3:0] {
         IDLE   = 4'd0,
@@ -30,6 +53,30 @@ module mmu import common::*;(
         RESP   = 4'd9
     } state_t;
 
+
+    task automatic raise_page_fault;
+        input logic [63:0] badaddr;
+        begin
+            page_fault <= 1'b1;
+            fault_addr <= badaddr;
+
+            case (access_type)
+                FETCH: fault_cause <= 4'd12;
+                LOAD:  fault_cause <= 4'd13;
+                STORE: fault_cause <= 4'd15;
+                default:      fault_cause <= 4'd13;
+            endcase
+
+            saved_req  <= '0;
+            saved_resp <= '0;
+            paddr      <= 64'b0;
+            pt_addr    <= 64'b0;
+            cur        <= RESP;
+        end
+    endtask
+
+    tlb_entry_t tlb[8];
+
     state_t cur;
 
     dbus_req_t  saved_req;
@@ -41,14 +88,27 @@ module mmu import common::*;(
     logic [63:0] pte;
     logic [63:0] paddr;
 
+    // ---- TLB 信号 ----
+    logic        tlb_hit;
+    logic [63:0] tlb_paddr;
+    logic [2:0]  tlb_replace_ptr;
+
     logic translate;
 
     logic pte_v;
     logic pte_r;
     logic pte_w;
     logic pte_x;
+    logic pte_u;
+    logic pte_a;
+    logic pte_d;
     logic pte_invalid;
     logic pte_leaf;
+    logic perm_fault;
+    logic us_fault;
+    logic ad_fault;
+    logic superpage_misaligned_l2;
+    logic superpage_misaligned_l1;
 
     assign translate =
         cpu_req.valid &&
@@ -59,9 +119,101 @@ module mmu import common::*;(
     assign pte_r = mem_resp.data[1];
     assign pte_w = mem_resp.data[2];
     assign pte_x = mem_resp.data[3];
+    assign pte_u = mem_resp.data[4];
+    assign pte_a = mem_resp.data[6];
+    assign pte_d = mem_resp.data[7];
 
+    // V 位 + W/R 合法性检查
     assign pte_invalid = !pte_v || (pte_w && !pte_r);
-    assign pte_leaf    = pte_r || pte_x;
+
+    // leaf = R or X set
+    assign pte_leaf = pte_r || pte_x;
+
+    // ---- 权限检查 ----
+    always_comb begin
+        perm_fault = 1'b0;
+
+        if (pte_leaf) begin
+            case (access_type)
+                FETCH: perm_fault = !pte_x;
+                LOAD:  perm_fault = !pte_r;
+                STORE: perm_fault = !pte_w;
+                default:      perm_fault = 1'b1;
+            endcase
+        end
+    end
+
+    // ---- U/S 权限检查 ----
+    always_comb begin
+        us_fault = 1'b0;
+
+        if (pte_leaf) begin
+            // U-mode 只能访问 U=1 的页
+            if (privil_mode == 2'b00 && !pte_u)
+                us_fault = 1'b1;
+
+            // S-mode 不能访问 U=1 的页（暂不考虑 SUM/MXR）
+            if (privil_mode == 2'b01 && pte_u)
+                us_fault = 1'b1;
+        end
+    end
+
+//    // ---- A/D 位检查 ----
+//    // A=0 的页不能被访问，D=0 的页不能被写入
+//    always_comb begin
+//        ad_fault = 1'b0;
+//
+//        if (pte_leaf) begin
+//            if (!pte_a)
+//                ad_fault = 1'b1;
+//            else if (access_type == STORE && !pte_d)
+//                ad_fault = 1'b1;
+//        end
+//    end
+
+
+    // ---- A/D 位检查（暂不启用，xv6 不设置 A/D，依赖硬件自动写回）----
+    // 如需启用，检查 !pte_a（读/取指时）或 !pte_d（写时）
+    assign ad_fault = 1'b0;
+
+    // ---- huge page PPN 低位对齐检查（必须全0）----
+    // L2 leaf (1GB): PPN[1:0] 必须为 0
+    assign superpage_misaligned_l2 = pte_leaf && (mem_resp.data[27:10] != 18'b0);
+    // L1 leaf (2MB): PPN[0] 必须为 0
+    assign superpage_misaligned_l1 = pte_leaf && (mem_resp.data[18:10] != 9'b0);
+
+    //========================================================
+    // TLB hit 检测（组合逻辑，直接使用 cpu_req.addr）
+    //========================================================
+    always_comb begin
+        tlb_hit   = 1'b0;
+        tlb_paddr = 64'b0;
+
+        for (int i = 0; i < 8; i++) begin
+            if (tlb[i].valid) begin
+                logic [26:0] req_vpn;
+                logic        match;
+
+                req_vpn = {cpu_req.addr[38:30], cpu_req.addr[29:21], cpu_req.addr[20:12]};
+
+                unique case (tlb[i].page_level)
+                    2'b10: match = (tlb[i].vpn[26:18] == req_vpn[26:18]); // 1GB: VPN[2] only
+                    2'b01: match = (tlb[i].vpn[26:9]  == req_vpn[26:9]);  // 2MB: VPN[2:1]
+                    default: match = (tlb[i].vpn == req_vpn);             // 4KB: full VPN
+                endcase
+
+                if (match) begin
+                    tlb_hit = 1'b1;
+
+                    unique case (tlb[i].page_level)
+                        2'b10: tlb_paddr = {8'b0, tlb[i].ppn[43:18], cpu_req.addr[29:0]};
+                        2'b01: tlb_paddr = {8'b0, tlb[i].ppn[43:9],  cpu_req.addr[20:0]};
+                        default: tlb_paddr = {8'b0, tlb[i].ppn[43:0], cpu_req.addr[11:0]};
+                    endcase
+                end
+            end
+        end
+    end
 
     //========================================================
     // CPU response
@@ -74,6 +226,12 @@ module mmu import common::*;(
 
         if (!flush && cur == RESP) begin
             cpu_resp = saved_resp;
+        end
+
+        // Page fault: 强制返回 data_ok 以释放下游 stall
+        if (!flush && page_fault) begin
+            cpu_resp.data_ok = 1'b1;
+            cpu_resp.data    = 64'b0;
         end
     end
 
@@ -140,11 +298,16 @@ module mmu import common::*;(
             pt_addr    <= 64'b0;
             pte        <= 64'b0;
             paddr      <= 64'b0;
+
+            page_fault  <= 1'b0;
+            fault_addr  <= 64'b0;
+            fault_cause <= 4'b0;
+
+            tlb_replace_ptr <= 3'b0;
+            for (int i = 0; i < 8; i++) tlb[i] <= '0;
         end
         else if (flush) begin
-            // 事务级取消：
-            // 丢弃当前 saved_req、page walk、translated physical request、saved_resp。
-            // 不产生任何 cpu_resp。
+            // 事务级取消 + TLB 全清
             cur        <= IDLE;
 
             saved_req  <= '0;
@@ -158,6 +321,12 @@ module mmu import common::*;(
             pte        <= 64'b0;
             paddr      <= 64'b0;
 
+            page_fault  <= 1'b0;
+            fault_addr  <= 64'b0;
+            fault_cause <= 4'b0;
+
+            for (int i = 0; i < 8; i++) tlb[i] <= '0;
+
 
         end
         else begin
@@ -165,6 +334,9 @@ module mmu import common::*;(
 
                 IDLE: begin
                     saved_resp <= '0;
+                    page_fault <= 1'b0;
+                    fault_addr <= 64'b0;
+                    fault_cause <= 4'b0;
 
                     if (cpu_req.valid) begin
                         saved_req <= cpu_req;
@@ -175,7 +347,13 @@ module mmu import common::*;(
                         root_addr <= {8'b0, satp[43:0], 12'b0};
 
                         if (translate) begin
-                            cur <= REQ_2;
+                            if (tlb_hit) begin
+                                paddr <= tlb_paddr;
+                                cur <= REQ_P;
+                            end
+                            else begin
+                                cur <= REQ_2;
+                            end
                         end
                         else begin
                             paddr <= cpu_req.addr;
@@ -195,26 +373,30 @@ module mmu import common::*;(
                         pte <= mem_resp.data;
 
                         if (pte_invalid) begin
-                            // 测试中不应出现 page fault。
-                            // 如果出现，说明上游送来了错误地址或页表内容被污染。
-                            // 这里必须停止 walk，不能继续用非法 PTE 计算下一级地址。
-                            cur        <= IDLE;
-                            saved_req  <= '0;
-                            saved_resp <= '0;
-                            pt_addr    <= 64'b0;
-                            paddr      <= 64'b0;
-
-
+                            raise_page_fault(saved_req.addr);
                         end
                         else if (pte_leaf) begin
-                            // Sv39 gigapage leaf at level 2.
-                            // 这里保留正确语义，虽然你的测试可能不用。
-                            paddr <= {
-                                8'b0,
-                                mem_resp.data[53:28],
-                                saved_req.addr[29:0]
-                            };
-                            cur <= REQ_P;
+
+                            if (perm_fault || us_fault || ad_fault || superpage_misaligned_l2) begin
+                                raise_page_fault(saved_req.addr);
+                            end 
+                            else begin
+                                paddr <= {
+                                    8'b0,
+                                    mem_resp.data[53:28],
+                                    saved_req.addr[29:0]
+                                };
+                                // TLB write (1GB huge page)
+                                tlb[tlb_replace_ptr] <= '{
+                                    valid: 1'b1,
+                                    vpn: {vpn2, vpn1, vpn0},
+                                    ppn: {mem_resp.data[53:28], 18'b0},
+                                    page_level: 2'b10,
+                                    r: pte_r, w: pte_w, x: pte_x, u: pte_u
+                                };
+                                tlb_replace_ptr <= tlb_replace_ptr + 1'b1;
+                                cur <= REQ_P;
+                            end
 
 
                         end
@@ -236,30 +418,33 @@ module mmu import common::*;(
                         pte <= mem_resp.data;
 
                         if (pte_invalid) begin
-                            cur        <= IDLE;
-                            saved_req  <= '0;
-                            saved_resp <= '0;
-                            pt_addr    <= 64'b0;
-                            paddr      <= 64'b0;
-
-
+                            raise_page_fault(saved_req.addr);
                         end
                         else if (pte_leaf) begin
-                            // Sv39 megapage leaf at level 1.
-                            paddr <= {
-                                8'b0,
-                                mem_resp.data[53:19],
-                                saved_req.addr[20:0]
-                            };
-                            cur <= REQ_P;
-
-
+                            if (perm_fault || us_fault || ad_fault || superpage_misaligned_l1) begin
+                                raise_page_fault(saved_req.addr);
+                            end
+                            else begin
+                                paddr <= {
+                                    8'b0,
+                                    mem_resp.data[53:19],
+                                    saved_req.addr[20:0]
+                                };
+                                // TLB write (2MB huge page)
+                                tlb[tlb_replace_ptr] <= '{
+                                    valid: 1'b1,
+                                    vpn: {vpn2, vpn1, vpn0},
+                                    ppn: {mem_resp.data[53:19], 9'b0},
+                                    page_level: 2'b01,
+                                    r: pte_r, w: pte_w, x: pte_x, u: pte_u
+                                };
+                                tlb_replace_ptr <= tlb_replace_ptr + 1'b1;
+                                cur <= REQ_P;
+                            end
                         end
                         else begin
                             pt_addr <= {8'b0, mem_resp.data[53:10], 12'b0};
                             cur     <= REQ_0;
-
-
                         end
                     end
                 end
@@ -272,22 +457,35 @@ module mmu import common::*;(
                     if (mem_resp.data_ok) begin
                         pte <= mem_resp.data;
 
-                        if (pte_invalid || !pte_leaf) begin
-                            cur        <= IDLE;
-                            saved_req  <= '0;
-                            saved_resp <= '0;
-                            paddr      <= 64'b0;
-
-
+                        if (pte_invalid) begin
+                            raise_page_fault(saved_req.addr);
+                        end
+                        else if (!pte_leaf) begin
+                            raise_page_fault(saved_req.addr);
+                        end
+                        else if (perm_fault || us_fault || ad_fault) begin
+                            raise_page_fault(saved_req.addr);
                         end
                         else begin
-                            paddr <= {8'b0, mem_resp.data[53:10], saved_req.addr[11:0]};
-                            cur   <= REQ_P;
-
-
+                            paddr <= {
+                                8'b0,
+                                mem_resp.data[53:10],
+                                saved_req.addr[11:0]
+                            };
+                            // TLB write (4KB page)
+                            tlb[tlb_replace_ptr] <= '{
+                                valid: 1'b1,
+                                vpn: {vpn2, vpn1, vpn0},
+                                ppn: mem_resp.data[53:10],
+                                page_level: 2'b00,
+                                r: pte_r, w: pte_w, x: pte_x, u: pte_u
+                            };
+                            tlb_replace_ptr <= tlb_replace_ptr + 1'b1;
+                            cur <= REQ_P;
                         end
                     end
                 end
+
 
                 REQ_P: begin
                     cur <= WAIT_P;
@@ -303,7 +501,8 @@ module mmu import common::*;(
                 end
 
                 RESP: begin
-
+                    // page_fault/fault_addr/fault_cause 不清零，保留到 IDLE
+                    // 让下游有足够时间捕获
 
                     saved_req  <= '0;
                     saved_resp <= '0;

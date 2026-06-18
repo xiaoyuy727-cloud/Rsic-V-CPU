@@ -322,8 +322,10 @@ assign sret_valid = valid_w && is_sret_w;
 assign exception_valid_w =
     valid_w && (
         iaddr_exc_w ||
+        instr_page_fault_w ||
         instr_exc_w ||
         daddr_exc_w ||
+        data_page_fault_w ||
         is_ecall_w
     );
 
@@ -412,6 +414,9 @@ always_comb begin
     if (iaddr_exc_w) begin
         trap_cause = 64'd0;      // instruction address misaligned
     end
+    else if (instr_page_fault_w) begin
+        trap_cause = 64'd12;     // instruction page fault
+    end
     else if (instr_exc_w) begin
         trap_cause = 64'd2;      // illegal instruction
     end
@@ -420,6 +425,12 @@ always_comb begin
             trap_cause = 64'd6;  // store address misaligned
         else
             trap_cause = 64'd4;  // load address misaligned
+    end
+    else if (data_page_fault_w) begin
+        if (instr_w[6:0] == 7'b0100011)
+            trap_cause = 64'd15; // store page fault
+        else
+            trap_cause = 64'd13; // load page fault
     end
     else if (valid_w && is_ecall_w) begin
         if (privil_mode == 2'b00)
@@ -481,8 +492,22 @@ end
 // MMU & bus
 logic bus_cancel;
 
-// 事务级取消：只有 W 阶段有效提交的 ecall/mret 才能取消总线事务
-assign bus_cancel = trap_valid || mret_valid;
+// MMU page fault 信号
+logic        mmu_page_fault;
+logic [63:0] mmu_fault_addr;
+logic [3:0]  mmu_fault_cause;
+
+// page fault 管道标志
+logic instr_page_fault_f;
+logic instr_page_fault_d;
+logic instr_page_fault_e;
+logic instr_page_fault_m;
+logic instr_page_fault_w;
+logic data_page_fault_m;
+logic data_page_fault_w;
+
+// 事务级取消：W 阶段 trap/mret 或 page fault 发生时（page fault 要释放总线死锁）
+assign bus_cancel = trap_valid || mret_valid || sret_valid || mmu_page_fault;
 
     ibus_resp_t  real_ibus_resp;
     ibus_req_t   real_ibus_req;
@@ -516,7 +541,9 @@ dbus_arbiter ab(
     .resps      ({instr_dbus_resp, real_dbus_resp}),
 
     .final_req  (virtual_dbus_req),
-    .final_resp (virtual_dbus_resp)
+    .final_resp (virtual_dbus_resp),
+
+    .access_type (arb_access_type)
 );
 mmu mmu(
     .clk         (clk),
@@ -530,11 +557,19 @@ mmu mmu(
     .mem_resp    (dbus_resp),
 
     .satp        (csr_satp),
-    .privil_mode (privil_mode)
+    .privil_mode (privil_mode),
+    .access_type (arb_access_type),
+
+    .page_fault  (mmu_page_fault),
+    .fault_addr  (mmu_fault_addr),
+    .fault_cause (mmu_fault_cause)
 );
 
 
     assign ibus_req='0;
+
+// arbiter 输出的访问类型，连到 MMU
+access_type_t arb_access_type;
 
 
 
@@ -781,6 +816,10 @@ assign final_redirect_valid =
     // =========================================================
     // IF/ID
     // =========================================================
+    // Page fault：按 fault_cause 分发给取指或访存
+    assign instr_page_fault_f = mmu_page_fault && (mmu_fault_cause == 4'd12);
+    assign data_page_fault_m  = mmu_page_fault && ((mmu_fault_cause == 4'd13) || (mmu_fault_cause == 4'd15));
+
     if_id_reg if_id(
         .instr_f     (instr_f),
         .clk         (clk),
@@ -793,7 +832,9 @@ assign final_redirect_valid =
         .valid_d     (valid_d),
         .pc_d        (pc_d),
         .iaddr_exc_f (iaddr_exc_f),
-        .iaddr_exc_d (iaddr_exc_d)
+        .iaddr_exc_d (iaddr_exc_d),
+        .instr_page_fault_f (instr_page_fault_f),
+        .instr_page_fault_d (instr_page_fault_d)
     );
 
     // =========================================================
@@ -1020,7 +1061,9 @@ assign final_redirect_valid =
         .regwrite_e    (regwrite_e),
 
         .iaddr_exc_d   (iaddr_exc_d),
-        .iaddr_exc_e   (iaddr_exc_e)
+        .iaddr_exc_e   (iaddr_exc_e),
+        .instr_page_fault_d (instr_page_fault_d),
+        .instr_page_fault_e (instr_page_fault_e)
     );
 
     // =========================================================
@@ -1242,6 +1285,8 @@ final_redirect_pc_unit frp(
 
         .iaddr_exc_m   (iaddr_exc_m),
         .iaddr_exc_e    (iaddr_exc_e_to_m),
+        .instr_page_fault_e (instr_page_fault_e),
+        .instr_page_fault_m (instr_page_fault_m),
         .redirect_pc_m (redirect_pc_m),
         .redirect_pc_e (redirect_pc_e),
         .redirect_valid_m (redirect_valid_m),
@@ -1279,6 +1324,7 @@ final_redirect_pc_unit frp(
         .mem_read_m     (mem_read_m),
         .mem_digit_m    (mem_digit_m),
         .mem_sign_m     (mem_sign_m),
+        .cancel         (bus_cancel),
 
         .dresp          (real_dbus_resp),
         .dreq           (real_dbus_req),
@@ -1336,6 +1382,10 @@ final_redirect_pc_unit frp(
 
         .iaddr_exc_m   (iaddr_exc_m),
         .iaddr_exc_w   (iaddr_exc_w),
+        .instr_page_fault_m (instr_page_fault_m),
+        .instr_page_fault_w (instr_page_fault_w),
+        .data_page_fault_m (data_page_fault_m),
+        .data_page_fault_w (data_page_fault_w),
         .redirect_pc_m (redirect_pc_m),
         .redirect_pc_w (redirect_pc_w),
         .redirect_valid_m (redirect_valid_m),

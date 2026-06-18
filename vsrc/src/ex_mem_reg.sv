@@ -77,6 +77,8 @@ module ex_mem_reg (
 
     input logic iaddr_exc_e,
     output logic iaddr_exc_m,
+    input logic instr_page_fault_e,
+    output logic instr_page_fault_m,
     input logic redirect_valid_e,
     output logic redirect_valid_m,
     input logic [63:0]redirect_pc_e,
@@ -138,6 +140,7 @@ end
             is_mret_m         <= 1'b0;
             is_sret_m         <= 1'b0;
             iaddr_exc_m        <= 1'b0;
+            instr_page_fault_m <= 1'b0;
             redirect_pc_m       <= 64'd0;
             redirect_valid_m    <= 1'b0;
         end
@@ -164,6 +167,7 @@ end
             is_mret_m          <= is_mret_e;
             is_sret_m          <= is_sret_e;
             iaddr_exc_m        <= iaddr_exc_e;
+            instr_page_fault_m <= instr_page_fault_e;
             redirect_pc_m       <= redirect_pc_e;
             redirect_valid_m    <= redirect_valid_e;
         end

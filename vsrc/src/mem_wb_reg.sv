@@ -79,6 +79,10 @@ module mem_wb_reg (
     output logic        valid_w,
     input logic iaddr_exc_m,
     output logic iaddr_exc_w,
+    input logic instr_page_fault_m,
+    output logic instr_page_fault_w,
+    input logic data_page_fault_m,
+    output logic data_page_fault_w,
     input logic redirect_valid_m,
     output logic redirect_valid_w,
     input logic [63:0]redirect_pc_m,
@@ -124,6 +128,8 @@ end
             is_mret_w        <= 1'b0;
             is_sret_w        <= 1'b0;
             iaddr_exc_w      <= 1'b0;
+            instr_page_fault_w <= 1'b0;
+            data_page_fault_w <= 1'b0;
             redirect_pc_w    <= 64'd0;
             redirect_valid_w <= 1'b0;
             daddr_exc_w      <= 1'b0;
@@ -146,6 +152,8 @@ end
             is_mret_w        <= is_mret_m;
             is_sret_w        <= is_sret_m;
             iaddr_exc_w      <= iaddr_exc_m;
+            instr_page_fault_w <= instr_page_fault_m;
+            data_page_fault_w <= data_page_fault_m;
             redirect_pc_w    <= redirect_pc_m;
             redirect_valid_w <= redirect_valid_m;
             daddr_exc_w      <= daddr_exc_m;
